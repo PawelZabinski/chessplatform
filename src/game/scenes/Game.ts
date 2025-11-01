@@ -1,5 +1,6 @@
 import { EventBus } from '../EventBus';
 import { Scene } from 'phaser';
+import { moves } from '$lib/stores/chess';
 
 export class Game extends Scene
 {
@@ -27,6 +28,16 @@ export class Game extends Scene
         }).setOrigin(0.5).setDepth(100);
 
         EventBus.emit('current-scene-ready', this);
+
+        moves.subscribe(mv => {
+            if (!mv.length) return
+
+            const latestMove = mv[mv.length - 1]
+
+            const newText = latestMove.piece + " (" + latestMove.color + ") moved from " + latestMove.from + " to " + latestMove.to
+        
+            this.gameText.setText(newText)
+        })
     }
 
     changeScene ()
