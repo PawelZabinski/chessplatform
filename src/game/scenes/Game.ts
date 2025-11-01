@@ -1,5 +1,6 @@
 import { EventBus } from '../EventBus';
 import { Scene } from 'phaser';
+import { moves } from '$lib/stores/chess';
 
 export class Game extends Scene {
     camera: Phaser.Cameras.Scene2D.Camera;
