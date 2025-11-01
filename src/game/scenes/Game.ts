@@ -1,13 +1,10 @@
-import { EventBus } from '../EventBus';
 import { Scene } from 'phaser';
-import { moves } from '$lib/stores/chess';
+import { EventBus } from '../EventBus';
+import { moves } from '../../lib/stores/chess';
 
 export class Game extends Scene {
-    camera: Phaser.Cameras.Scene2D.Camera;
-    background: Phaser.GameObjects.Image;
-    gameText: Phaser.GameObjects.Text;
-    player: Phaser.Physics.Arcade.Sprite;
-    cursors: Phaser.Input.Keyboard.CursorKeys;
+    private player!: Phaser.Physics.Arcade.Sprite;
+    private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
 
     constructor() {
         super('Game');
@@ -24,7 +21,7 @@ export class Game extends Scene {
     create() {
         this.add.image(512, 384, 'sky').setDisplaySize(1024, 768);
 
-        let platforms = this.physics.add.staticGroup();
+        const platforms = this.physics.add.staticGroup();
         platforms.create(500, 580, 'ground').setScale(3).refreshBody();
         platforms.create(600, 450, 'ground');
         platforms.create(50, 350, 'ground');
