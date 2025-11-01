@@ -1,11 +1,10 @@
 import { EventBus } from '../EventBus';
 import { Scene } from 'phaser';
 
-export class GameOver extends Scene
-{
-    camera: Phaser.Cameras.Scene2D.Camera;
-    background: Phaser.GameObjects.Image;
-    gameOverText : Phaser.GameObjects.Text;
+export class GameOver extends Scene {
+    private camera!: Phaser.Cameras.Scene2D.Camera;
+    private background!: Phaser.GameObjects.Image;
+    private gameOverText!: Phaser.GameObjects.Text;
 
     constructor ()
     {
