@@ -27,8 +27,8 @@ export class Game extends Scene {
         let platforms = this.physics.add.staticGroup();
         platforms.create(500, 580, 'ground').setScale(3).refreshBody();
         platforms.create(600, 450, 'ground');
-        platforms.create(50, 250, 'ground');
-        platforms.create(750, 220, 'ground');
+        platforms.create(50, 350, 'ground');
+        platforms.create(750, 250, 'ground');
 
         this.player = this.physics.add.sprite(100, 450, 'dude');
         this.player.setBounce(0.2);
@@ -88,7 +88,10 @@ export class Game extends Scene {
                 let dy = parseInt(toNumber) - parseInt(fromNumber);
                 console.log(dx, dy);
                 ix += dx;
-                this.player.setVelocityY(Math.min((Math.pow(dy, 1/2)*4000/3), 2000));
+                if (dy < 0) {// do nothing, to prevent player from moving out off screen
+                } else {
+                    this.player.setVelocityY(Math.min((Math.pow(dy, 1/2)*4000/3), 2000));
+                }
                 this.player.setVelocityX(dx * 50);
             }
             
