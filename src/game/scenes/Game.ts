@@ -53,31 +53,74 @@ export class Game extends Scene {
         this.physics.add.collider(this.player, platforms);
 
         this.cursors = this.input.keyboard.createCursorKeys();
+
+        this.gameText = this.add.text(400, 100, 'Welcome to the Game!', {
+            fontFamily: 'Arial', 
+            fontSize: '32px', 
+            color: '#ffffff', 
+            align: 'center'
+        }).setOrigin(0.5);
+
+        EventBus.emit('current-scene-ready', this);
+
+        let ix = 0;
+        moves.subscribe(mv => {
+            if (!mv.length) return
+
+            const latestMove = mv[mv.length - 1]
+
+            const newText = latestMove.piece + " (" + latestMove.color + ") moved from " + latestMove.from + " to " + latestMove.to
+
+
+            if (latestMove.color === 'w') {
+                let toPos = String(latestMove.to);
+                let fromPos = String(latestMove.from);
+                let fromLetter = fromPos.charAt(0);
+                let fromNumber = fromPos.charAt(1);
+                let toLetter = toPos.charAt(0);
+                let toNumber = toPos.charAt(1);
+                let dx = toLetter.charCodeAt(0) - fromLetter.charCodeAt(0);
+                let dy = parseInt(toNumber) - parseInt(fromNumber);
+                console.log(dx, dy);
+                ix += dx;
+                this.player.setVelocityY(Math.min((Math.pow(dy, 1/2)*4000/3), 2000));
+                this.player.setVelocityX(dx * 50);
+            }
+            
+            this.gameText.setText(newText)
+        })
     }
 
 
     update() {
         // Control left and right movement
-        if (this.cursors.left.isDown) {
-            this.player.setVelocityX(-160);
-            this.player.anims.play('left', true);
-        }
-        else if (this.cursors.right.isDown) {
-            this.player.setVelocityX(160);
-            this.player.anims.play('right', true);
-        }
-        else {
-            this.player.setVelocityX(0);
-            this.player.anims.play('turn');
-        }
+        // if (this.cursors.left.isDown) {
+        //     this.player.setVelocityX(-160);
+        //     this.player.anims.play('left', true);
+        // }
+        // else if (this.cursors.right.isDown) {
+        //     this.player.setVelocityX(160);
+        //     this.player.anims.play('right', true);
+        // }
+        // else {
+        //     this.player.setVelocityX(0);
+        //     this.player.anims.play('turn');
+        // }
 
         // Handle jumping (only if the player is touching the ground)
         if (this.cursors.up.isDown && this.player.body.touching.down) {
             this.player.setVelocityY(-330);
         }
+
+        // Intended logic is to prevent player from going off the screen
+        // if (this.player.y > 580) {
+        //     this.player.setPosition(this.player.x, 450)
+        // }
     }
 
     changeScene() {
         this.scene.start('GameOver');
     }
+
+
 }
