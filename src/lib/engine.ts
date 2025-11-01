@@ -97,11 +97,13 @@ export class Engine {
 
 					if (blunderMoves.length > 0) {
 						const randomIndex = Math.floor(Math.random() * blunderMoves.length);
+						console.log("Random move chosen.")
 						resolve(blunderMoves[randomIndex]);
 						return;
 					}
 				}
 
+				console.log("Best move chosen.")
 				resolve(bestMoveLan);
 			};
 		});

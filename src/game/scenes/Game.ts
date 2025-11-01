@@ -1,4 +1,6 @@
 import { Scene } from 'phaser';
+import { EventBus } from '../EventBus';
+import { moves } from '../../lib/stores/chess';
 
 export class Game extends Scene {
     private player!: Phaser.Physics.Arcade.Sprite;
