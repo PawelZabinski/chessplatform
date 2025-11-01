@@ -29,15 +29,15 @@
     "devDependencies": {
         "@sveltejs/adapter-auto": "6.0.0",
         "@sveltejs/adapter-static": "3.0.8",
-        "@sveltejs/kit": "2.20.7",
-        "@sveltejs/vite-plugin-svelte": "5.0.3",
+        "@sveltejs/kit": "^1.30.3",
+        "@sveltejs/vite-plugin-svelte": "^2.5.3",
         "@tsconfig/svelte": "^5.0.4",
-        "svelte": "5.23.1",
+        "svelte": "^4.2.19",
         "svelte-check": "^4.0.2",
         "terser": "5.39.0",
         "tslib": "2.7.0",
         "typescript": "5.7.2",
-        "vite": "6.3.1"
+        "vite": "^4.5.14"
     },
     "type": "module",
     "dependencies": {

@@ -1,3 +1,5 @@
+import { Chess } from 'chess.js';
+
 export class Engine {
     constructor(options = {}) {
         this.stockfish = undefined;
@@ -9,6 +11,7 @@ export class Engine {
         this.externalUciCallback = undefined;
         this.onUciOk = undefined;
         this.onBestMove = undefined;
+        this.randomMoveProbability = 0.1;
     }
 
     // Initialise Stockfish. Resolve promise after receiving uciok.
@@ -25,12 +28,16 @@ export class Engine {
                 }
             };
             this.stockfish.postMessage('uci');
+            this.stockfish.postMessage('setoption name Skill Level value 1');
+            this.stockfish.postMessage('setoption name UCI_LimitStrength value true');
+            this.stockfish.postMessage('setoption name UCI_Elo value 400');
         });
     }
 
     // Callback when receiving UCI messages from Stockfish.
     _onUci({ data }) {
         const uci = data;
+
         if (this.onUciOk && uci === 'uciok') {
             this.onUciOk();
         }
@@ -59,10 +66,27 @@ export class Engine {
 
             this.onBestMove = (uci) => {
                 const uciArray = uci.split(' ');
-                const bestMoveLan = uciArray[1];
+                const bestMoveLan = uciArray[1]; // Stockfish's ELO 100 "best" move
                 this.state = 'waiting';
                 this.onBestMove = undefined;
-                resolve(bestMoveLan);
+
+                if (Math.random() < this.randomMoveProbability) {
+                    // 1. Create a game instance from the FEN
+                    const game = new Chess(fen);
+                    
+                    const allLegalMoves = game.moves({ verbose: true }).map(m => m.from + m.to);
+                    const blunderMoves = allLegalMoves.filter(move => move !== bestMoveLan);
+
+                    if (blunderMoves.length > 0) {
+                        const randomIndex = Math.floor(Math.random() * blunderMoves.length);
+                        resolve(blunderMoves[randomIndex]);
+                    } else {
+                        resolve(bestMoveLan);
+                    }
+                    
+                } else {
+                    resolve(bestMoveLan);
+                }
             };
         });
     }
@@ -81,6 +105,7 @@ export class Engine {
                 throw new Error('Engine not initialised');
             if (this.state !== 'searching')
                 return resolve();
+            
             this.onBestMove = (uci) => {
                 this.state = 'waiting';
                 this.onBestMove = undefined;

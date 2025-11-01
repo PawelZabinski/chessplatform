@@ -8,10 +8,11 @@
     }
 
     function handleGameOver(event) {
-
+        console.log("Game over")
+        console.log(event.detail)
     }
 </script>    
 <Chess 
     on:move={handleMove} on:gameOver={handleGameOver}
-    engine={new Engine({depth: 20, moveTime: 1500, color: 'b'})}
+    engine={new Engine({ depth: 1, randomMoveProbability: 0.4 })}
 />
