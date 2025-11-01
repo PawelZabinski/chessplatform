@@ -1,27 +1,38 @@
-import { get, writable } from 'svelte/store';
+import { get, writable, type Readable } from 'svelte/store';
+import { Chess, type Piece, type Square } from 'chess.js';
 import type { Move } from 'svelte-chess';
-import { Chess } from "chess.js";
 
-type MovesStore = {
-	subscribe: ReturnType<typeof writable<Move[]>>['subscribe'];
+const INITIAL_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+
+type MovesStore = Readable<Move[]> & {
 	add: (move: Move) => void;
+	reset: () => void;
 };
 
 function createMovesStore(): MovesStore {
-	const { subscribe, update } = writable<Move[]>([]);
+	const { subscribe, update, set } = writable<Move[]>([]);
 
 	return {
 		subscribe,
 		add(move) {
-			update((moves) => [...moves, move]);
+			update((movesList) => [...movesList, move]);
+		},
+		reset() {
+			set([]);
 		}
 	};
 }
 
 export const moves = createMovesStore();
 
-function createChessStateStore() {
-	const { subscribe, update, set } = writable("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+type ChessStateStore = Readable<string> & {
+	addMove: (move: Move) => void;
+	removeRandomPiece: (colour: string, handleNewFen?: (newFen: string) => void) => void;
+	reset: (fen?: string) => void;
+};
+
+function createChessStateStore(): ChessStateStore {
+	const { subscribe, update, set } = writable<string>(INITIAL_FEN);
 
 	return {
 		subscribe,
@@ -29,41 +40,61 @@ function createChessStateStore() {
 			moves.add(move);
 			set(move.after);
 		},
-		removeRandomPiece: (handleNewFen = (newFen) => {}) => update((fen: string) => {
-			// Removes a random piece (except the king itself...)
-			const chess = new Chess(fen)
-			// get all pieces, filter to white ones
-			const pieces = [];
-			for (let file = 0; file < 8; file++) {
-			for (let rank = 0; rank < 8; rank++) {
-				const square = "abcdefgh"[file] + (rank + 1);
-				const piece = chess.get(square);
-				if (piece && piece.color === "w" && piece.type !== "k") pieces.push({ square, piece });
-			}
-			}
+		removeRandomPiece(colour: string, handleNewFen?: (newFen: string) => void) {
+			update((fen) => {
+				const chess = new Chess(fen);
+				const removablePieces: Array<{ square: Square; piece: Piece }> = [];
 
-			// remove one at random
-			if (pieces.length > 0) {
-				const toRemove = pieces[Math.floor(Math.random() * pieces.length)];
-				chess.remove(toRemove.square);
-			}
+				for (let file = 0; file < 8; file += 1) {
+					for (let rank = 0; rank < 8; rank += 1) {
+						const square = `${'abcdefgh'[file]}${rank + 1}` as Square;
+						const piece = chess.get(square);
+						if (piece && piece.color === colour && piece.type !== 'k') {
+							removablePieces.push({ square, piece });
+						}
+					}
+				}
 
-			// generate new FEN
-			const newFen = chess.fen();
-			handleNewFen(newFen);
-			return newFen;
-		})
+				if (removablePieces.length > 0) {
+					const toRemove = removablePieces[Math.floor(Math.random() * removablePieces.length)];
+					chess.remove(toRemove.square);
+				}
+
+				const newFen = chess.fen();
+				handleNewFen?.(newFen);
+				return newFen;
+			});
+		},
+		reset(fen = INITIAL_FEN) {
+			moves.reset();
+			set(fen);
+		}
 	};
 }
 
 export const chessState = createChessStateStore();
 
-// This function should only be set by Chessboard.svelte and should only be used to remove random piece when player hits spike
-export const handlePieceRemovalFunction = (() => {
-	const {subscribe, set, update} = writable(() => {})
+type PieceRemovalHandler = (...args: any[]) => void;
+
+function createPieceRemovalHandlerStore() {
+	const store = writable<PieceRemovalHandler | null>(null);
 
 	return {
-		set,
-		execute: () => subscribe(f => f())()
+		subscribe: store.subscribe,
+		set(handler: PieceRemovalHandler) {
+			store.set(handler);
+		},
+		clear() {
+			store.set(null);
+		},
+		execute(...args: any[]) {
+			const handler = get(store);
+			if (handler) {
+				handler(...args);
+			}
+		}
 	};
-})()
+}
+
+// This function should only be set by ChessBoard.svelte and used to remove a random piece when needed.
+export const handlePieceRemovalFunction = createPieceRemovalHandlerStore();
