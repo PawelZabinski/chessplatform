@@ -119,13 +119,6 @@ export class Game extends Scene {
         );
         this.cursors = this.input.keyboard.createCursorKeys();
 
-        this.gameText = this.add.text(SCREEN_DIMENSIONS[0]/2, 10, 'Welcome to the Game!', {
-            fontFamily: 'Arial', 
-            fontSize: '16px', 
-            color: '#ffffff', 
-            align: 'center'
-        }).setOrigin(0.5);
-
         this.scoreText = this.add.text(10, 5, 'Score: 0', 
             { fontSize: '32px', fontStyle: 'bold', fontFamily: 'Arial Black', fill: '#000000ff', strokeThickness: 8 }
         ).setDepth(50);
@@ -147,7 +140,7 @@ export class Game extends Scene {
             if (!mv.length) return;
             const latestMove = mv[mv.length - 1];
             const newText = latestMove.piece + " (" + latestMove.color + ") moved from " + latestMove.from + " to " + latestMove.to;
-
+            // console.log(newText);
             if (latestMove.color === 'w') {
                 let toPos = String(latestMove.to);
                 let fromPos = String(latestMove.from);
@@ -166,8 +159,6 @@ export class Game extends Scene {
 
                 this.player.setVelocityX(dx * X_VELOCITY_MULTIPLIER);
             }
-            
-            this.gameText.setText(newText);
         })
 
         this.events.once('shutdown', () => {
