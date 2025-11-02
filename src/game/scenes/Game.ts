@@ -2,9 +2,10 @@ import { Scene } from 'phaser';
 import { ChessEvents, EventBus } from '../EventBus';
 import { moves } from '$lib/stores/chess';
 
-const SCREEN_DIMENSIONS = [1024, 768];
+let SCREEN_DIMENSIONS = [1024, 768]; // THESE ARE ORIGINAL VALUES, THEY WILL CHANGE TO MATCH ACTUAL SCREEN WIDTH AND HEIGHT
+
 const LEVEL_HEIGHT = 150;
-const INITIAL_GROUND_POSITION = [500, 650];
+const INITIAL_GROUND_YPOSITION = 750;
 const PLAYER_Y_GRAVITY = 350;
 const PLAYER_COLLISION_BOUNCE = 0.2;
 const PLAYER_MAX_VELOCITY = 800;
@@ -44,6 +45,8 @@ export class Game extends Scene {
     }
 
     create() {
+        SCREEN_DIMENSIONS = [this.scale.width, this.scale.height]
+
         // Repeating alternating (light blue, dark blue) sky pattern
         const skyHeight = SCREEN_DIMENSIONS[1];
         let yPosition = 0;
@@ -56,14 +59,16 @@ export class Game extends Scene {
         }
 
         this.platforms = this.physics.add.staticGroup();
-        this.platforms.create(INITIAL_GROUND_POSITION[0], INITIAL_GROUND_POSITION[1], 'ground').setScale(3).refreshBody();
+        console.log(this.scale.width, this.scale.height)
+        console.log(SCREEN_DIMENSIONS)
+        this.platforms.create(SCREEN_DIMENSIONS[0] / 2, INITIAL_GROUND_YPOSITION, 'ground').setDisplaySize(SCREEN_DIMENSIONS[0], 100).refreshBody();
         for (let i = 1; i <= 10; i++) {
             this.createLevel(i)
         }
 
         this.highestLevelGenerated = 10;
 
-        this.player = this.physics.add.sprite(INITIAL_GROUND_POSITION[0], INITIAL_GROUND_POSITION[1] - 100, 'dude');
+        this.player = this.physics.add.sprite(SCREEN_DIMENSIONS[0]/2, INITIAL_GROUND_YPOSITION - 100, 'dude');
         this.player.setBounce(PLAYER_COLLISION_BOUNCE);
         this.player.body.setGravityY(PLAYER_Y_GRAVITY);
         this.player.body.setMaxVelocity(PLAYER_MAX_VELOCITY);
@@ -184,16 +189,10 @@ export class Game extends Scene {
         // Create level
 
         this.currentLevel = Math.floor((SCREEN_DIMENSIONS[1] - this.player.y) / LEVEL_HEIGHT)
-        console.log(this.currentLevel)
 
         if (this.currentLevel > this.maxLevel) {
-            console.log("NEW BEST")
-            // 7 -> 9
-            // 17 -> 18 and 19
             this.maxLevel = this.currentLevel
-            console.log(this.highestLevelGenerated + 1, this.maxLevel + 10)
             for (let i = this.highestLevelGenerated + 1; i <= this.maxLevel + 10; i++) {
-                console.log("new level")
                 this.createLevel(i)
             }
 
