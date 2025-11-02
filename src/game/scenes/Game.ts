@@ -1,6 +1,6 @@
 import { Scene } from 'phaser';
-import { EventBus } from '../EventBus';
-import { handlePieceRemovalFunction, moves } from '$lib/stores/chess';
+import { ChessEvents, EventBus } from '../EventBus';
+import { moves } from '$lib/stores/chess';
 
 export class Game extends Scene {
     private player!: Phaser.Physics.Arcade.Sprite;
@@ -67,14 +67,18 @@ export class Game extends Scene {
 
         EventBus.emit('current-scene-ready', this);
 
+        const handleGameOver = (detail) => {
+            this.scene.start("GameOver", { reason: detail.reason, result: detail.result })
+        }
+        EventBus.on(ChessEvents.gameOver, handleGameOver)
+
         let ix = 0;
-        moves.subscribe(mv => {
+        const unsubscribe = moves.subscribe(mv => {
             if (!mv.length) return
 
             const latestMove = mv[mv.length - 1]
 
             const newText = latestMove.piece + " (" + latestMove.color + ") moved from " + latestMove.from + " to " + latestMove.to
-
 
             if (latestMove.color === 'w') {
                 let toPos = String(latestMove.to);
@@ -93,23 +97,28 @@ export class Game extends Scene {
             
             this.gameText.setText(newText)
         })
+
+        this.events.once('shutdown', () => {
+            EventBus.off(ChessEvents.gameOver, handleGameOver);
+            unsubscribe();
+        });
     }
 
 
     update() {
         // Control left and right movement
-        if (this.cursors.left.isDown) {
-            this.player.setVelocityX(-160);
-            this.player.anims.play('left', true);
-        }
-        else if (this.cursors.right.isDown) {
-            this.player.setVelocityX(160);
-            this.player.anims.play('right', true);
-        }
-        else {
-            this.player.setVelocityX(0);
-            this.player.anims.play('turn');
-        }
+        // if (this.cursors.left.isDown) {
+        //     this.player.setVelocityX(-160);
+        //     this.player.anims.play('left', true);
+        // }
+        // else if (this.cursors.right.isDown) {
+        //     this.player.setVelocityX(160);
+        //     this.player.anims.play('right', true);
+        // }
+        // else {
+        //     this.player.setVelocityX(0);
+        //     this.player.anims.play('turn');
+        // }
 
         // Handle jumping (only if the player is touching the ground)
         if (this.cursors.up.isDown && this.player.body.touching.down) {
@@ -120,6 +129,10 @@ export class Game extends Scene {
         // if (this.player.y > 580) {
         //     this.player.setPosition(this.player.x, 450)
         // }
+
+        if (this.cursors.space.isDown) {
+            EventBus.emit(ChessEvents.gameOver, {reason: "checkmate", result: 1})
+        }
     }
 
     changeScene() {

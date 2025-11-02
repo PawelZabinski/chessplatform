@@ -1,9 +1,8 @@
-import { get, writable, type Readable } from 'svelte/store';
+import { writable, type Readable } from 'svelte/store';
 import { Chess, type Piece, type Square } from 'chess.js';
 import type { Move } from 'svelte-chess';
 
 const INITIAL_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-// TODO: Change the handlePieceRemovalFunction and other future function handler using the eventbus
 
 type MovesStore = Readable<Move[]> & {
 	add: (move: Move) => void;
@@ -26,9 +25,11 @@ function createMovesStore(): MovesStore {
 
 export const moves = createMovesStore();
 
+type PieceColor = Piece['color'];
+
 type ChessStateStore = Readable<string> & {
 	addMove: (move: Move) => void;
-	removeRandomPiece: (colour: string, handleNewFen?: (newFen: string) => void) => void;
+	removeRandomPiece: (colour?: PieceColor, handleNewFen?: (newFen: string) => void) => void;
 	reset: (fen?: string) => void;
 };
 
@@ -41,7 +42,7 @@ function createChessStateStore(): ChessStateStore {
 			moves.add(move);
 			set(move.after);
 		},
-		removeRandomPiece(colour: string, handleNewFen?: (newFen: string) => void) {
+		removeRandomPiece(colour: PieceColor = 'w', handleNewFen?: (newFen: string) => void) {
 			update((fen) => {
 				const chess = new Chess(fen);
 				const removablePieces: Array<{ square: Square; piece: Piece }> = [];
@@ -74,28 +75,3 @@ function createChessStateStore(): ChessStateStore {
 }
 
 export const chessState = createChessStateStore();
-
-type PieceRemovalHandler = (...args: any[]) => void;
-
-function createPieceRemovalHandlerStore() {
-	const store = writable<PieceRemovalHandler | null>(null);
-
-	return {
-		subscribe: store.subscribe,
-		set(handler: PieceRemovalHandler) {
-			store.set(handler);
-		},
-		clear() {
-			store.set(null);
-		},
-		execute(...args: any[]) {
-			const handler = get(store);
-			if (handler) {
-				handler(...args);
-			}
-		}
-	};
-}
-
-// This function should only be set by ChessBoard.svelte and used to remove a random piece when needed.
-export const handlePieceRemovalFunction = createPieceRemovalHandlerStore();
