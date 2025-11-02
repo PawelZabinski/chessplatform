@@ -9,8 +9,10 @@ import { Preloader } from './scenes/Preloader';
 const config: Phaser.Types.Core.GameConfig = {
     type: AUTO,
     scale: {
-        mode: Phaser.Scale.RESIZE, // makes it auto-fit parent
-        autoCenter: Phaser.Scale.CENTER_BOTH
+        mode: Phaser.Scale.FIT,
+        autoCenter: Phaser.Scale.CENTER_BOTH,
+        width: window.innerWidth,
+        height: window.innerHeight
     },
     parent: 'game-container',
     backgroundColor: '#028af8',

@@ -1,21 +1,45 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { Chess, type GameOverEvent, type MoveEvent } from 'svelte-chess';
 	import { Engine } from '$lib/engine';
-	import { moves } from '$lib/stores/chess';
+	import type { Color } from 'svelte-chess';
+	import { chessState } from '$lib/stores/chess';
+	import { ChessEvents, EventBus } from '../game/EventBus';
 
-	const engine = new Engine({ depth: 1, randomMoveProbability: 1 });
+	let chessboard: InstanceType<typeof Chess> | null = null;
+	const engine = new Engine({ depth: 1, randomMoveProbability: 0.5 });
 
-	function handleMove(event: MoveEvent) {
-		moves.add(event.detail);
+	function handleMove(event: MoveEvent): void {
+		const move = event.detail;
+		chessState.addMove(move);
+
+		// Check if move was an en passant
+		if (move.flags.includes('e')) {
+			EventBus.emit(ChessEvents.enPassant)
+		}
 	}
 
-	function handleGameOver(event: GameOverEvent) {
-		console.log('Game over');
-		console.log(event.detail);
+	function handleGameOver(event: GameOverEvent): void {
+		EventBus.emit(ChessEvents.gameOver, event.detail);
 	}
+
+	function removeRandomPiece(colour: Color = 'w'): void {
+		chessState.removeRandomPiece(colour, (newFen) => {
+			chessboard?.load(newFen);
+		});
+	}
+
+	onMount(() => {
+		const removeListener = colour => removeRandomPiece(colour);
+		EventBus.on(ChessEvents.removePiece, removeListener);
+		return () => {
+			EventBus.off(ChessEvents.removePiece, removeListener);
+		};
+	});
 </script>
 
 <Chess 
+	bind:this={chessboard}
 	on:move={handleMove}
 	on:gameOver={handleGameOver}
 	engine={engine}

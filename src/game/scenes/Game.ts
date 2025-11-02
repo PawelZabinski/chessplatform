@@ -1,6 +1,6 @@
 import { Scene } from 'phaser';
-import { EventBus } from '../EventBus';
-import { moves } from '../../lib/stores/chess';
+import { ChessEvents, EventBus } from '../EventBus';
+import { moves } from '$lib/stores/chess';
 
 export class Game extends Scene {
     private player!: Phaser.Physics.Arcade.Sprite;
@@ -19,7 +19,9 @@ export class Game extends Scene {
     }
 
     create() {
-        this.add.image(512, 384, 'sky').setDisplaySize(1024, 768);
+        this.add.image(0, 0, 'sky')
+            .setOrigin(0, 0)
+            .setDisplaySize(this.scale.width, this.scale.height);
 
         this.platforms = this.physics.add.staticGroup();
         this.platforms.create(500, 580, 'ground').setScale(3).refreshBody();
@@ -65,13 +67,18 @@ export class Game extends Scene {
 
         EventBus.emit('current-scene-ready', this);
 
-        moves.subscribe(mv => {
+        const handleGameOver = (detail) => {
+            this.scene.start("GameOver", { reason: detail.reason, result: detail.result })
+        }
+        EventBus.on(ChessEvents.gameOver, handleGameOver)
+
+        let ix = 0;
+        const unsubscribe = moves.subscribe(mv => {
             if (!mv.length) return
 
             const latestMove = mv[mv.length - 1];
 
             const newText = latestMove.piece + " (" + latestMove.color + ") moved from " + latestMove.from + " to " + latestMove.to;
-
 
             if (latestMove.color === 'w') {
                 let toPos = String(latestMove.to);
@@ -94,6 +101,11 @@ export class Game extends Scene {
             
             this.gameText.setText(newText);
         })
+
+        this.events.once('shutdown', () => {
+            EventBus.off(ChessEvents.gameOver, handleGameOver);
+            unsubscribe();
+        });
     }
 
 
