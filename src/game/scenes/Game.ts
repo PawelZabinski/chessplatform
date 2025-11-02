@@ -34,6 +34,10 @@ export class Game extends Scene {
         this.player.setCollideWorldBounds(true);
         this.player.body.setGravityY(300);
 
+        let camera = this.cameras.main;
+        camera.startFollow(this.player);
+        camera.setBounds(0, -1000000, 1024, 1000000+768);
+
         this.anims.create({
             key: 'left',
             frames: this.anims.generateFrameNumbers('dude', { start: 0, end: 3 }),
