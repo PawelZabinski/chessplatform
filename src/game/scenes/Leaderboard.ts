@@ -26,7 +26,7 @@ export class Leaderboard extends Scene {
             strokeThickness: 8
         }).setOrigin(0.5);
 
-		const scores = get(leaderboard)
+		const scores = get(leaderboard).sort((a, b) => b.score - a.score);
 
         // table layout
         const tableX = this.scale.width / 2;
@@ -81,9 +81,9 @@ export class Leaderboard extends Scene {
 
 			// difficulty
             const diffColor =
-                entry.difficulty === 'Easy'
+                entry.difficulty === 'Novice'
                     ? '#24d124ff'
-                    : entry.difficulty === 'Normal'
+                    : entry.difficulty === 'Intermediate'
                     ? '#2c9ed6ff'
                     : '#dc6565ff';
             this.add.text(columnX[2], y, entry.difficulty, {

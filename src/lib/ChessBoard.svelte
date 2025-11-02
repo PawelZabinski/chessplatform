@@ -33,8 +33,12 @@
 		const removeListener = colour => removeRandomPiece(colour);
 		EventBus.on(ChessEvents.removePiece, removeListener);
 
+        const resetListener = () => chessState.reset(newFen => chessboard?.load(newFen))
+        EventBus.on(ChessEvents.resetBoard, resetListener)
+
 		return () => {
 			EventBus.off(ChessEvents.removePiece, removeListener);
+            EventBus.off(ChessEvents.resetBoard, resetListener)
 		};
 	});
 </script>

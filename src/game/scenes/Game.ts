@@ -19,11 +19,15 @@ export class Game extends Scene {
     private currentLevel = 0;
     private maxLevel = 0;
     private highestLevelGenerated = 0;
+    private difficulty = "Novice";
 
     constructor() {
         super('Game');
     }
 
+    init(data: { difficulty }) {
+        this.difficulty = data.difficulty;
+    }
 
     createLevel(level) {
         const y = SCREEN_DIMENSIONS[1] - level * LEVEL_HEIGHT;
@@ -135,7 +139,7 @@ export class Game extends Scene {
 
         const handleGameOver = (detail) => {
             this.scene.start("GameOver", { reason: detail.reason, result: detail.result, 
-                maxScore: detail.result = "You've won the chess game!" ? this.maxLevel * 20 : this.maxLevel * 10 })
+                maxScore: detail.result = "You've won the chess game!" ? this.maxLevel * 20 : this.maxLevel * 10, difficulty: this.difficulty })
         }
         EventBus.on(ChessEvents.gameOver, handleGameOver);
 

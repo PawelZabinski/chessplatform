@@ -29,7 +29,7 @@ type PieceColor = Piece['color'];
 
 type ChessStateStore = Readable<string> & {
 	addMove: (move: Move) => void;
-	removeRandomPiece: (colour?: PieceColor, handleNewFen?: (newFen: string) => void) => void;
+	removeRandomPiece: (colour?: PieceColor, callback?: (newFen: string) => void) => void;
 	reset: (fen?: string) => void;
 };
 
@@ -42,7 +42,7 @@ function createChessStateStore(): ChessStateStore {
 			moves.add(move);
 			set(move.after);
 		},
-		removeRandomPiece(colour: PieceColor = 'w', handleNewFen?: (newFen: string) => void) {
+		removeRandomPiece(colour: PieceColor = 'w', callback?: (newFen: string) => void) {
 			update((fen) => {
 				const chess = new Chess(fen);
 				const removablePieces: Array<{ square: Square; piece: Piece }> = [];
@@ -63,13 +63,14 @@ function createChessStateStore(): ChessStateStore {
 				}
 
 				const newFen = chess.fen();
-				handleNewFen?.(newFen);
+				callback?.(newFen);
 				return newFen;
 			});
 		},
-		reset(fen = INITIAL_FEN) {
+		reset(callback = () => {}, fen = INITIAL_FEN) {
 			moves.reset();
 			set(fen);
+			callback(fen);
 		}
 	};
 }

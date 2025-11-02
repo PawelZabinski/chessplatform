@@ -9,6 +9,7 @@ export const ChessEvents = {
 	selectDifficulty: 'chess:select-difficulty',
 	enPassant: 'chess:en-passant',
 	removePiece: 'chess:remove-piece',
+	resetBoard: 'chess:reset-board',
 	gameOver: 'chess:game-over'
 } as const;
 
