@@ -33,7 +33,20 @@ export class Game extends Scene {
             const x = Math.random() * SCREEN_DIMENSIONS[0];
             // we now have (x, y) for this platform
             this.platforms.create(x, y, 'ground');
+            const randChance = Math.random();
+            const randPos = Math.random() * 100 - 50;
+            if (randChance < 0.1) {
+                let spike = this.spikes.create(x + randPos, y - 30, 'spike')
+                spike.setDisplaySize(30, 30);
+                spike.body.setSize(30, 30);
+            }
         }
+    }
+
+    handleSpikeCollision(player, spike) {
+        console.log('Player hit a spike!');
+        spike.destroy();
+        EventBus.emit(ChessEvents.removePiece, 'w');
     }
 
     preload() {
@@ -41,6 +54,11 @@ export class Game extends Scene {
         this.load.image('ground', 'assets/platform.png');
         this.load.image('star', 'assets/star.png');
         this.load.image('bomb', 'assets/bomb.png');
+        this.load.image('dynamite', 'assets/Dynamite.PNG');
+        this.load.image('orb', 'assets/Orb.PNG');
+        this.load.image('spike', 'assets/Spike.PNG');
+        this.load.image('throughplatform', 'assets/ThroughPlatform.PNG');
+        this.load.image('platform', 'assets/Platform2.PNG')
         this.load.spritesheet('dude', 'assets/dude.png', { frameWidth: 32, frameHeight: 48 });
     }
 
@@ -59,6 +77,7 @@ export class Game extends Scene {
         }
 
         this.platforms = this.physics.add.staticGroup();
+        this.spikes = this.physics.add.staticGroup();
         // console.log(this.scale.width, this.scale.height);
         // console.log(SCREEN_DIMENSIONS);
         this.platforms.create(SCREEN_DIMENSIONS[0] / 2, INITIAL_GROUND_YPOSITION, 'ground').setDisplaySize(SCREEN_DIMENSIONS[0], 100).refreshBody();
@@ -113,6 +132,10 @@ export class Game extends Scene {
             },
             this
         );
+
+        // Enable overlap detection for spikes with player
+        this.physics.add.overlap(this.player, this.spikes, this.handleSpikeCollision, null, this);
+
         this.cursors = this.input.keyboard.createCursorKeys();
 
         this.scoreText = this.add.text(10, 5, 'Score: 0', 
