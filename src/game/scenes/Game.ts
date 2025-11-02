@@ -26,13 +26,13 @@ export class Game extends Scene {
 
 
     createLevel(level) {
-        const y = SCREEN_DIMENSIONS[1] - level * LEVEL_HEIGHT
-        const rand = Math.random()
-        const numberPlatforms = rand < 0.1 ? 1 : (rand < 0.75 ? 1 : 2)
+        const y = SCREEN_DIMENSIONS[1] - level * LEVEL_HEIGHT;
+        const rand = Math.random();
+        const numberPlatforms = rand < 0.1 ? 1 : (rand < 0.75 ? 1 : 2);
         for (let i = 0; i < numberPlatforms; i++) {
-            const x = Math.random() * SCREEN_DIMENSIONS[0]
+            const x = Math.random() * SCREEN_DIMENSIONS[0];
             // we now have (x, y) for this platform
-            this.platforms.create(x, y, 'ground')
+            this.platforms.create(x, y, 'ground');
         }
     }
 
@@ -45,7 +45,7 @@ export class Game extends Scene {
     }
 
     create() {
-        SCREEN_DIMENSIONS = [this.scale.width, this.scale.height]
+        SCREEN_DIMENSIONS = [this.scale.width, this.scale.height];
 
         // Repeating alternating (light blue, dark blue) sky pattern
         const skyHeight = SCREEN_DIMENSIONS[1];
@@ -59,11 +59,11 @@ export class Game extends Scene {
         }
 
         this.platforms = this.physics.add.staticGroup();
-        console.log(this.scale.width, this.scale.height)
-        console.log(SCREEN_DIMENSIONS)
+        // console.log(this.scale.width, this.scale.height);
+        // console.log(SCREEN_DIMENSIONS);
         this.platforms.create(SCREEN_DIMENSIONS[0] / 2, INITIAL_GROUND_YPOSITION, 'ground').setDisplaySize(SCREEN_DIMENSIONS[0], 100).refreshBody();
         for (let i = 1; i <= 10; i++) {
-            this.createLevel(i)
+            this.createLevel(i);
         }
 
         this.highestLevelGenerated = 10;
@@ -115,12 +115,21 @@ export class Game extends Scene {
         );
         this.cursors = this.input.keyboard.createCursorKeys();
 
-        this.gameText = this.add.text(400, 100, 'Welcome to the Game!', {
+        this.gameText = this.add.text(SCREEN_DIMENSIONS[0]/2, 10, 'Welcome to the Game!', {
             fontFamily: 'Arial', 
-            fontSize: '32px', 
+            fontSize: '16px', 
             color: '#ffffff', 
             align: 'center'
         }).setOrigin(0.5);
+
+        this.scoreText = this.add.text(10, 5, 'Score: 0', 
+            { fontSize: '32px', fontStyle: 'bold', fontFamily: 'Arial Black', fill: '#000000ff', strokeThickness: 8 }
+        ).setDepth(50);
+        this.scoreText.setScrollFactor(0); // This makes the text fixed to the camera's view
+        this.maxLevelText = this.add.text(10, 45, 'Max Level: 0', 
+            { fontSize: '24px', fontStyle: 'bold', fontFamily: 'Arial Black', fill: '#000000ff', strokeThickness: 4}
+        ).setDepth(50);
+        this.maxLevelText.setScrollFactor(0);
 
         EventBus.emit('current-scene-ready', this);
 
@@ -188,16 +197,19 @@ export class Game extends Scene {
 
         // Create level
 
-        this.currentLevel = Math.floor((SCREEN_DIMENSIONS[1] - this.player.y) / LEVEL_HEIGHT)
+        this.currentLevel = Math.floor((SCREEN_DIMENSIONS[1] - this.player.y) / LEVEL_HEIGHT);
 
         if (this.currentLevel > this.maxLevel) {
-            this.maxLevel = this.currentLevel
+            this.maxLevel = this.currentLevel;
             for (let i = this.highestLevelGenerated + 1; i <= this.maxLevel + 10; i++) {
-                this.createLevel(i)
+                this.createLevel(i);
             }
 
-            this.highestLevelGenerated = this.maxLevel + 10
+            this.highestLevelGenerated = this.maxLevel + 10;
         }
+
+        this.scoreText.setText(`Score: ${10 * this.currentLevel}`);
+        this.maxLevelText.setText(`Max Score: ${10 * this.maxLevel}`);
     }
 
     changeScene() {
