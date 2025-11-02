@@ -7,7 +7,7 @@
 	import { ChessEvents, EventBus } from '../game/EventBus';
 
 	let chessboard: InstanceType<typeof Chess> | null = null;
-	const engine = new Engine({ depth: 1, randomMoveProbability: 0.5 });
+	let engine = new Engine();
 
 	function handleMove(event: MoveEvent): void {
 		const move = event.detail;
@@ -32,6 +32,7 @@
 	onMount(() => {
 		const removeListener = colour => removeRandomPiece(colour);
 		EventBus.on(ChessEvents.removePiece, removeListener);
+
 		return () => {
 			EventBus.off(ChessEvents.removePiece, removeListener);
 		};

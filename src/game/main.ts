@@ -3,6 +3,8 @@ import { GameOver } from './scenes/GameOver';
 import { Game as MainGame } from './scenes/Game';
 import { AUTO, Game } from 'phaser';
 import { Preloader } from './scenes/Preloader';
+import { StartMenu } from './scenes/StartMenu';
+import { Leaderboard } from './scenes/Leaderboard';
 
 // Find out more information about the Game Config at:
 // https://docs.phaser.io/api-documentation/typedef/types-core#gameconfig
@@ -19,6 +21,8 @@ const config: Phaser.Types.Core.GameConfig = {
     scene: [
         Boot,
         Preloader,
+        StartMenu,
+        Leaderboard,
         MainGame,
         GameOver
     ],
