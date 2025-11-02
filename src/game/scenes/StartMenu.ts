@@ -62,7 +62,7 @@ export class StartMenu extends Scene {
 
         this.difficultyButton = makeButton(
             `Difficulty: ${difficulties[currentIndex]}`,
-            350,
+            450,
             () => {
                 currentIndex = (currentIndex + 1) % difficulties.length;
                 this.selectedDifficulty = difficulties[currentIndex];
@@ -72,12 +72,12 @@ export class StartMenu extends Scene {
             0x222266
         );
 
-        makeButton('Start Game', 250, () => {
+        makeButton('Start Game', 350, () => {
             EventBus.emit(ChessEvents.resetBoard)
             this.scene.start('Game', { difficulty: this.selectedDifficulty });
         });
 
-        makeButton('Leaderboard', 450, () => {
+        makeButton('Leaderboard', 550, () => {
             console.log('Opening Leaderboard scene');
             this.scene.start('Leaderboard');
         });

@@ -132,7 +132,7 @@ export class Game extends Scene {
 
         const handleGameOver = (detail) => {
             this.scene.start("GameOver", { reason: detail.reason, result: detail.result, 
-                maxScore: detail.result = "You've won the chess game!" ? this.maxLevel * 20 : this.maxLevel * 10, difficulty: this.difficulty })
+                maxScore: detail.result == "You've won the chess game!" ? this.maxLevel * 20 : this.maxLevel * 10, difficulty: this.difficulty })
         }
         EventBus.on(ChessEvents.gameOver, handleGameOver);
 
