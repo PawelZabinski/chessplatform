@@ -134,7 +134,8 @@ export class Game extends Scene {
         EventBus.emit('current-scene-ready', this);
 
         const handleGameOver = (detail) => {
-            this.scene.start("GameOver", { reason: detail.reason, result: detail.result })
+            this.scene.start("GameOver", { reason: detail.reason, result: detail.result, 
+                maxScore: detail.result = "You've won the chess game!" ? this.maxLevel * 20 : this.maxLevel * 10 })
         }
         EventBus.on(ChessEvents.gameOver, handleGameOver);
 
