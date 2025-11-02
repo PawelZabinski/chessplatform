@@ -10,6 +10,21 @@ export class Game extends Scene {
         super('Game');
     }
 
+
+    createLevel(level) {
+        // const lowerLimit = 768 - level * 200 + 50
+        // const upperLimit = lowerLimit + 200 - 50
+        // const y = lowerLimit + Math.random() * (upperLimit - lowerLimit)
+        const y = 768 - level * 200
+        const rand = Math.random()
+        const numberPlatforms = rand < 0.1 ? 1 : (rand < 0.75 ? 1 : 2)
+        for (let i = 0; i < numberPlatforms; i++) {
+            const x = Math.random() * 1024
+            // we now have (x, y) for this platform
+            this.platforms.create(x, y, 'ground')
+        }
+    }
+
     preload() {
         this.load.image('sky', 'assets/sky.png');
         this.load.image('ground', 'assets/platform.png');
@@ -31,19 +46,83 @@ export class Game extends Scene {
         }
 
         this.platforms = this.physics.add.staticGroup();
-        this.platforms.create(500, 580, 'ground').setScale(3).refreshBody();
-        this.platforms.create(600, 450, 'ground');
-        this.platforms.create(50, 350, 'ground');
-        this.platforms.create(750, 250, 'ground');
+        this.platforms.create(500, 650, 'ground').setScale(3).refreshBody();
+        for (let i = 1; i <= 10; i++) {
+            this.createLevel(i)
+        }
+        
+        // function generateUniformDistribution(count) {
+        //     let uniformNumbers = [];
+        //     for (let i = 0; i < count; i++) {
+        //         uniformNumbers.push(Math.floor(Math.random() * (1024 + 1)));
+        //     }
+        //     return uniformNumbers;
+        // }
 
-        this.player = this.physics.add.sprite(100, 450, 'dude');
+        // function generateIncrementingList(count) {
+        //     let incrementingList = [400];
+        //     let currentValue = 400;
+            
+        //     for (let i = 0; i < count - 1; i++) {
+        //         let increment = Math.random() < 0.75 ? 0 : -150;
+        //         currentValue += increment;
+        //         incrementingList.push(currentValue);
+        //     }
+            
+        //     return incrementingList;
+        // }
+
+        // let xs = generateUniformDistribution(10);
+        // let ys = generateIncrementingList(10);
+
+        // console.log('Uniform List:', xs);
+        // console.log('Incrementing List:', ys);
+
+        // for (let i = 0; i < xs.length; i++) {
+        //     this.platforms.create(xs[i], ys[i], 'ground')
+        //     console.log('x:', xs[i], 'y:', ys[i]);
+        // }
+
+
+        // let levels = [];
+        // let startValue = 550;
+
+        // for (let i = 1; i <= 10; i++) {
+        //     let endValue = startValue + 200;
+        //     let levelData = { level: i, range: [startValue, endValue], numbers: [] };
+
+        //     // Randomly decide how many pairs (0, 1, or 2 pairs) to generate for this level
+        //     let numCount = Math.floor(Math.random() * 3);  // 0, 1, or 2 pairs
+
+        //     // Generate the pairs of random numbers
+        //     for (let j = 0; j < numCount; j++) {
+        //         let firstNumber = Math.floor(Math.random() * 769); // First random number between 0 and 768
+        //         let secondNumber = Math.floor(Math.random() * (endValue - startValue + 1)) + startValue; // Second random number in range [startValue, endValue]
+        //         levelData.numbers.push([firstNumber, secondNumber]);  // Pair the two numbers
+        //     }
+
+        //     levels.push(levelData);
+        //     startValue = endValue - 400; // Move to the next starting value
+        // }
+
+        
+
+        // console.log(levels);
+
+
+
+        // this.platforms.create(600, 450, 'ground');
+        // this.platforms.create(50, 350, 'ground');
+        // this.platforms.create(750, 250, 'ground');
+
+        this.player = this.physics.add.sprite(100, 550, 'dude');
         this.player.setBounce(0.2);
         this.player.setCollideWorldBounds(true);
-        this.player.body.setGravityY(200);
+        this.player.body.setGravityY(150);
 
         let camera = this.cameras.main;
-        camera.startFollow(this.player);
-        camera.setBounds(0, -1000000, 1024, 1000000+768);
+        camera.startFollow(this.player); 
+        camera.setBounds(0, -1000000, 1024, 1000000+768); // Only follows player in y direction
 
         this.anims.create({
             key: 'left',
@@ -150,6 +229,9 @@ export class Game extends Scene {
 
         // If player is directly under a platform and is moving upwards fast enough, the player should automatically move onto the platform.
         // values to be adjusted
+
+        // Create level
+
     }
 
     changeScene() {
