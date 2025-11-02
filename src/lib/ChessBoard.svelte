@@ -8,7 +8,13 @@
 	const engine = new Engine({ depth: 1, randomMoveProbability: 0.5 });
 
 	function handleMove(event: MoveEvent): void {
-		chessState.addMove(event.detail);
+        const move = event.detail;
+		chessState.addMove(move);
+
+        // Check if move was an en passant (TODO: Add extra score - maybe add 10 score)
+        if (move.flags.includes("e")) {
+            console.log("EN PASSANT")
+        }
 	}
 
 	function handleGameOver(event: GameOverEvent): void {
