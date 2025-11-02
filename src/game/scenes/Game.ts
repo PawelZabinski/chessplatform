@@ -145,6 +145,7 @@ export class Game extends Scene {
             repeat: -1
         });
 
+        this.physics.world.setBoundsCollision(true, true, false, true);
         this.physics.add.collider(
             this.player,
             this.platforms,
