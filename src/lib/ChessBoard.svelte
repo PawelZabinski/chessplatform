@@ -3,7 +3,7 @@
 	import { Engine } from '$lib/engine';
 	import { moves } from '$lib/stores/chess';
 
-	const engine = new Engine({ depth: 1, randomMoveProbability: 0.4 });
+	const engine = new Engine({ depth: 1, randomMoveProbability: 1 });
 
 	function handleMove(event: MoveEvent) {
 		moves.add(event.detail);

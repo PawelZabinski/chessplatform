@@ -21,11 +21,11 @@ export class Game extends Scene {
     create() {
         this.add.image(512, 384, 'sky').setDisplaySize(1024, 768);
 
-        const platforms = this.physics.add.staticGroup();
-        platforms.create(500, 580, 'ground').setScale(3).refreshBody();
-        platforms.create(600, 450, 'ground');
-        platforms.create(50, 350, 'ground');
-        platforms.create(750, 250, 'ground');
+        this.platforms = this.physics.add.staticGroup();
+        this.platforms.create(500, 580, 'ground').setScale(3).refreshBody();
+        this.platforms.create(600, 450, 'ground');
+        this.platforms.create(50, 350, 'ground');
+        this.platforms.create(750, 250, 'ground');
 
         this.player = this.physics.add.sprite(100, 450, 'dude');
         this.player.setBounce(0.2);
@@ -52,7 +52,7 @@ export class Game extends Scene {
             repeat: -1
         });
 
-        this.physics.add.collider(this.player, platforms);
+        this.physics.add.collider(this.player, this.platforms);
 
         this.cursors = this.input.keyboard.createCursorKeys();
 
@@ -65,13 +65,12 @@ export class Game extends Scene {
 
         EventBus.emit('current-scene-ready', this);
 
-        let ix = 0;
         moves.subscribe(mv => {
             if (!mv.length) return
 
-            const latestMove = mv[mv.length - 1]
+            const latestMove = mv[mv.length - 1];
 
-            const newText = latestMove.piece + " (" + latestMove.color + ") moved from " + latestMove.from + " to " + latestMove.to
+            const newText = latestMove.piece + " (" + latestMove.color + ") moved from " + latestMove.from + " to " + latestMove.to;
 
 
             if (latestMove.color === 'w') {
@@ -83,16 +82,17 @@ export class Game extends Scene {
                 let toNumber = toPos.charAt(1);
                 let dx = toLetter.charCodeAt(0) - fromLetter.charCodeAt(0);
                 let dy = parseInt(toNumber) - parseInt(fromNumber);
-                console.log(dx, dy);
-                ix += dx;
-                if (dy < 0) {// do nothing, to prevent player from moving out off screen
-                } else {
-                    this.player.setVelocityY(Math.min((Math.pow(dy, 1/2)*4000/3), 2000));
+                // console.log(dx, dy);
+
+                if (dy < 0) { // do nothing, if move has a downwards component, to prevent player from moving off the screen
+                } 
+                else {
+                    this.player.setVelocityY(Math.min((Math.pow(dy, 1/2)*4000/3), 2000)); // value to be adjusted
                 }
                 this.player.setVelocityX(dx * 50);
             }
             
-            this.gameText.setText(newText)
+            this.gameText.setText(newText);
         })
     }
 
@@ -117,15 +117,39 @@ export class Game extends Scene {
             this.player.setVelocityY(-330);
         }
 
-        // Intended logic is to prevent player from going off the screen
-        // if (this.player.y > 580) {
-        //     this.player.setPosition(this.player.x, 450)
-        // }
+        // If player is directly under a platform and is moving upwards fast enough, the player should automatically move onto the platform.
+        // values to be adjusted
+        function checkForTeleport(player, platforms) {
+            platforms.children.iterate((platform) => {
+                // Check if player is close to platform from below
+                const diff = (player.y - player.height / 2) - (platform.y + platform.height / 2);
+                const isVerticallyCloseEnough = -20 < diff && diff < 20;
+
+                // Check if player is beneath platform (horizontal alignment)
+                const platformLeft = platform.x - platform.width / 2;
+                const platformRight = platform.x + platform.width / 2;
+                const isHorizontallyAligned = player.x >= platformLeft && player.x <= platformRight;
+
+                if (isVerticallyCloseEnough && isHorizontallyAligned) {
+                    console.log("Horizontally aligned and vertically close enough");
+                    // If the player is moving upwards fast enough (velocity.y < 0 means upwards)
+                    if (player.body.velocity.y < -150) {
+                        console.log("Player is moving upwards fast enough");
+                        console.log(player.body.velocity.y);
+                        // Teleport the player above the platform.
+                        player.y -= (player.height + platform.height + diff + 5);
+
+                        // Slow down the player's upward velocity, to ensure that the player doesn't keep moving up levels.
+                        player.body.velocity.y *= 0.1;
+                    }
+                }
+                // console.log(player.body.velocity.y);
+            });
+        }
+        checkForTeleport(this.player, this.platforms);
     }
 
     changeScene() {
         this.scene.start('GameOver');
     }
-
-
 }
