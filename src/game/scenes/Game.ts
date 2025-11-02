@@ -32,7 +32,7 @@ export class Game extends Scene {
         this.player = this.physics.add.sprite(100, 450, 'dude');
         this.player.setBounce(0.2);
         this.player.setCollideWorldBounds(true);
-        this.player.body.setGravityY(300);
+        this.player.body.setGravityY(200);
 
         let camera = this.cameras.main;
         camera.startFollow(this.player);
@@ -58,8 +58,19 @@ export class Game extends Scene {
             repeat: -1
         });
 
-        this.physics.add.collider(this.player, this.platforms);
+        this.physics.add.collider(
+            this.player,
+            this.platforms,
+            undefined, // optional collide callback
+            (player, platform) => {
+                const p = player as Phaser.Types.Physics.Arcade.SpriteWithDynamicBody;
+                const plat = platform as Phaser.Physics.Arcade.Image;
 
+                // only collide if player is falling and above the platform
+                return p.body.velocity.y >= 0 || p.body.bottom <= plat.body.top + 10;
+            },
+            this
+        );
         this.cursors = this.input.keyboard.createCursorKeys();
 
         this.gameText = this.add.text(400, 100, 'Welcome to the Game!', {
@@ -98,7 +109,7 @@ export class Game extends Scene {
                 if (dy < 0) { // do nothing, if move has a downwards component, to prevent player from moving off the screen
                 } 
                 else {
-                    this.player.setVelocityY(Math.min((Math.pow(dy, 1/2)*4000/3), 2000)); // value to be adjusted
+                    this.player.setVelocityY(Math.min((Math.pow(dy, 1/2)*4000/3), 3000)); // value to be adjusted
                 }
                 this.player.setVelocityX(dx * 50);
             }
@@ -135,34 +146,6 @@ export class Game extends Scene {
 
         // If player is directly under a platform and is moving upwards fast enough, the player should automatically move onto the platform.
         // values to be adjusted
-        function checkForTeleport(player, platforms) {
-            platforms.children.iterate((platform) => {
-                // Check if player is close to platform from below
-                const diff = (player.y - player.height / 2) - (platform.y + platform.height / 2);
-                const isVerticallyCloseEnough = -20 < diff && diff < 20;
-
-                // Check if player is beneath platform (horizontal alignment)
-                const platformLeft = platform.x - platform.width / 2;
-                const platformRight = platform.x + platform.width / 2;
-                const isHorizontallyAligned = player.x >= platformLeft && player.x <= platformRight;
-
-                if (isVerticallyCloseEnough && isHorizontallyAligned) {
-                    console.log("Horizontally aligned and vertically close enough");
-                    // If the player is moving upwards fast enough (velocity.y < 0 means upwards)
-                    if (player.body.velocity.y < -150) {
-                        console.log("Player is moving upwards fast enough");
-                        console.log(player.body.velocity.y);
-                        // Teleport the player above the platform.
-                        player.y -= (player.height + platform.height + diff + 5);
-
-                        // Slow down the player's upward velocity, to ensure that the player doesn't keep moving up levels.
-                        player.body.velocity.y *= 0.1;
-                    }
-                }
-                // console.log(player.body.velocity.y);
-            });
-        }
-        checkForTeleport(this.player, this.platforms);
     }
 
     changeScene() {
