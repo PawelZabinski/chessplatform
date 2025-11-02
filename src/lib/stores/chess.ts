@@ -3,6 +3,7 @@ import { Chess, type Piece, type Square } from 'chess.js';
 import type { Move } from 'svelte-chess';
 
 const INITIAL_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+// TODO: Change the handlePieceRemovalFunction and other future function handler using the eventbus
 
 type MovesStore = Readable<Move[]> & {
 	add: (move: Move) => void;

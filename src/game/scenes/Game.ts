@@ -19,7 +19,9 @@ export class Game extends Scene {
     }
 
     create() {
-        this.add.image(512, 384, 'sky').setDisplaySize(1024, 768);
+        this.add.image(0, 0, 'sky')
+            .setOrigin(0, 0)
+            .setDisplaySize(this.scale.width, this.scale.height);
 
         const platforms = this.physics.add.staticGroup();
         platforms.create(500, 580, 'ground').setScale(3).refreshBody();
@@ -96,18 +98,18 @@ export class Game extends Scene {
 
     update() {
         // Control left and right movement
-        // if (this.cursors.left.isDown) {
-        //     this.player.setVelocityX(-160);
-        //     this.player.anims.play('left', true);
-        // }
-        // else if (this.cursors.right.isDown) {
-        //     this.player.setVelocityX(160);
-        //     this.player.anims.play('right', true);
-        // }
-        // else {
-        //     this.player.setVelocityX(0);
-        //     this.player.anims.play('turn');
-        // }
+        if (this.cursors.left.isDown) {
+            this.player.setVelocityX(-160);
+            this.player.anims.play('left', true);
+        }
+        else if (this.cursors.right.isDown) {
+            this.player.setVelocityX(160);
+            this.player.anims.play('right', true);
+        }
+        else {
+            this.player.setVelocityX(0);
+            this.player.anims.play('turn');
+        }
 
         // Handle jumping (only if the player is touching the ground)
         if (this.cursors.up.isDown && this.player.body.touching.down) {
@@ -123,6 +125,4 @@ export class Game extends Scene {
     changeScene() {
         this.scene.start('GameOver');
     }
-
-
 }
