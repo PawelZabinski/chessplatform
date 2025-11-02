@@ -19,9 +19,16 @@ export class Game extends Scene {
     }
 
     create() {
-        this.add.image(0, 0, 'sky')
-            .setOrigin(0, 0)
-            .setDisplaySize(this.scale.width, this.scale.height);
+        // Repeating alternating (light blue, dark blue) sky pattern
+        const skyHeight = 768;
+        let yPosition = 0;
+        for (let i = 0; i < 10; i++) {
+            let sky = this.add.image(0, yPosition, 'sky')
+                .setOrigin(0, 0)
+                .setDisplaySize(this.scale.width, skyHeight);  // this.scale.height does not work
+             sky.flipY = (i % 2 === 0);  // Flip every other sky
+            yPosition -= skyHeight;
+        }
 
         this.platforms = this.physics.add.staticGroup();
         this.platforms.create(500, 580, 'ground').setScale(3).refreshBody();
