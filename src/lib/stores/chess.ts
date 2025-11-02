@@ -75,3 +75,17 @@ function createChessStateStore(): ChessStateStore {
 }
 
 export const chessState = createChessStateStore();
+
+function createLeaderboardStore() {
+	const { subscribe, update } = writable([]);
+
+	return {
+		subscribe,
+		add(row) {
+			// Update the leaderboard
+			update((leaderboard) => [...leaderboard, row]);
+		},
+	};
+}
+
+export const leaderboard = createLeaderboardStore();

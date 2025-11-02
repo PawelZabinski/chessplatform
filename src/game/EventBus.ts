@@ -6,6 +6,7 @@ import { Events } from 'phaser';
 export const EventBus = new Events.EventEmitter();
 
 export const ChessEvents = {
+	selectDifficulty: 'chess:select-difficulty',
 	enPassant: 'chess:en-passant',
 	removePiece: 'chess:remove-piece',
 	gameOver: 'chess:game-over'

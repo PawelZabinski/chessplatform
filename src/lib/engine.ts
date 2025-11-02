@@ -1,4 +1,5 @@
 import { Chess, type Move } from 'chess.js';
+import { EventBus, ChessEvents } from '../game/EventBus';
 
 type EngineState = 'uninitialised' | 'initialising' | 'waiting' | 'searching';
 
@@ -21,7 +22,7 @@ export class Engine {
 	private onUciOk?: () => void;
 	private onBestMove?: UciCallback;
 	private externalUciCallback?: UciCallback;
-	private readonly randomMoveProbability: number;
+	private randomMoveProbability: number;
 	private readonly handleUciMessage = (event: MessageEvent<string>) => {
 		this.onUci(event.data);
 	};
@@ -30,10 +31,27 @@ export class Engine {
 
 	constructor(options: EngineOptions = {}) {
 		this.moveTime = options.moveTime ?? 2000;
-		this.depth = options.depth ?? 40;
+		this.depth = options.depth ?? 1;
 		this.color = options.color ?? 'b';
 		this.stockfishPath = options.stockfishPath ?? 'stockfish.js';
-		this.randomMoveProbability = options.randomMoveProbability ?? 0.1;
+		this.randomMoveProbability = options.randomMoveProbability ?? 0.5;
+
+		// Listen for difficulty selection events
+		EventBus.on(ChessEvents.selectDifficulty, (difficulty: string | string) => {
+			switch (difficulty) {
+				case "Novice": // Easy
+					this.randomMoveProbability = 0.8;
+					break;
+				case "Intermediate": // Normal
+					this.randomMoveProbability = 0.5;
+					break;
+				case "Expert": // Hard
+					this.randomMoveProbability = 0.1;
+					break;
+				default:
+					this.randomMoveProbability = 0.5;
+			}
+		});
 	}
 
 	/** Initialise Stockfish. Resolve promise after receiving uciok. */
@@ -56,17 +74,10 @@ export class Engine {
 		});
 	}
 
-	/** Callback when receiving UCI messages from Stockfish. */
 	private onUci(uci: string): void {
-		if (this.onUciOk && uci === 'uciok') {
-			this.onUciOk();
-		}
-		if (this.onBestMove && uci.startsWith('bestmove')) {
-			this.onBestMove(uci);
-		}
-		if (this.externalUciCallback) {
-			this.externalUciCallback(uci);
-		}
+		if (this.onUciOk && uci === 'uciok') this.onUciOk();
+		if (this.onBestMove && uci.startsWith('bestmove')) this.onBestMove(uci);
+		if (this.externalUciCallback) this.externalUciCallback(uci);
 	}
 
 	setUciCallback(callback: UciCallback): void {
@@ -74,6 +85,7 @@ export class Engine {
 	}
 
 	getMove(fen: string): Promise<string> {
+		console.log('Random probability:', this.randomMoveProbability);
 		return new Promise((resolve) => {
 			if (!this.stockfish) throw new Error('Engine not initialised');
 			if (this.state !== 'waiting') throw new Error(`Engine not ready (state: ${this.state})`);
@@ -97,13 +109,13 @@ export class Engine {
 
 					if (blunderMoves.length > 0) {
 						const randomIndex = Math.floor(Math.random() * blunderMoves.length);
-						console.log("Random move chosen.")
+						console.log('Random move chosen.');
 						resolve(blunderMoves[randomIndex]);
 						return;
 					}
 				}
 
-				console.log("Best move chosen.")
+				console.log('Best move chosen.');
 				resolve(bestMoveLan);
 			};
 		});
@@ -124,7 +136,6 @@ export class Engine {
 				resolve();
 				return;
 			}
-
 			this.onBestMove = () => {
 				this.state = 'waiting';
 				this.onBestMove = undefined;
