@@ -15,6 +15,9 @@ const Y_VELOCITY_MULTIPLIER = 400;
 export class Game extends Scene {
     private player!: Phaser.Physics.Arcade.Sprite;
     private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
+    private currentLevel = 0;
+    private maxLevel = 0;
+    private highestLevelGenerated = 0;
 
     constructor() {
         super('Game');
@@ -44,7 +47,7 @@ export class Game extends Scene {
         // Repeating alternating (light blue, dark blue) sky pattern
         const skyHeight = SCREEN_DIMENSIONS[1];
         let yPosition = 0;
-        for (let i = 0; i < 10; i++) {
+        for (let i = 0; i < 1e3; i++) {
             let sky = this.add.image(0, yPosition, 'sky')
                 .setOrigin(0, 0)
                 .setDisplaySize(this.scale.width, skyHeight);  // this.scale.height does not work
@@ -57,6 +60,8 @@ export class Game extends Scene {
         for (let i = 1; i <= 10; i++) {
             this.createLevel(i)
         }
+
+        this.highestLevelGenerated = 10;
 
         this.player = this.physics.add.sprite(INITIAL_GROUND_POSITION[0], INITIAL_GROUND_POSITION[1] - 100, 'dude');
         this.player.setBounce(PLAYER_COLLISION_BOUNCE);
@@ -94,7 +99,7 @@ export class Game extends Scene {
             this.player,
             this.platforms,
             undefined, // optional collide callback
-            (player, platform) => {
+            (player, platform) => { 
                 const p = player as Phaser.Types.Physics.Arcade.SpriteWithDynamicBody;
                 const plat = platform as Phaser.Physics.Arcade.Image;
 
@@ -178,6 +183,22 @@ export class Game extends Scene {
 
         // Create level
 
+        this.currentLevel = Math.floor((SCREEN_DIMENSIONS[1] - this.player.y) / LEVEL_HEIGHT)
+        console.log(this.currentLevel)
+
+        if (this.currentLevel > this.maxLevel) {
+            console.log("NEW BEST")
+            // 7 -> 9
+            // 17 -> 18 and 19
+            this.maxLevel = this.currentLevel
+            console.log(this.highestLevelGenerated + 1, this.maxLevel + 10)
+            for (let i = this.highestLevelGenerated + 1; i <= this.maxLevel + 10; i++) {
+                console.log("new level")
+                this.createLevel(i)
+            }
+
+            this.highestLevelGenerated = this.maxLevel + 10
+        }
     }
 
     changeScene() {
