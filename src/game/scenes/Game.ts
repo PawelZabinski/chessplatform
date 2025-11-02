@@ -85,14 +85,11 @@ export class Game extends Scene {
         const handleGameOver = (detail) => {
             this.scene.start("GameOver", { reason: detail.reason, result: detail.result })
         }
-        EventBus.on(ChessEvents.gameOver, handleGameOver)
+        EventBus.on(ChessEvents.gameOver, handleGameOver);
 
-        let ix = 0;
         const unsubscribe = moves.subscribe(mv => {
-            if (!mv.length) return
-
+            if (!mv.length) return;
             const latestMove = mv[mv.length - 1];
-
             const newText = latestMove.piece + " (" + latestMove.color + ") moved from " + latestMove.from + " to " + latestMove.to;
 
             if (latestMove.color === 'w') {
