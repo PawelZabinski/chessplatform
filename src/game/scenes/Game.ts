@@ -32,7 +32,8 @@ export class Game extends Scene {
         this.player = this.physics.add.sprite(100, 450, 'dude');
         this.player.setBounce(0.2);
         this.player.setCollideWorldBounds(true);
-        this.player.body.setGravityY(200);
+        this.player.body.setGravityY(350);
+        this.player.body.setMaxVelocity(800);
 
         let camera = this.cameras.main;
         camera.startFollow(this.player);
@@ -67,7 +68,7 @@ export class Game extends Scene {
                 const plat = platform as Phaser.Physics.Arcade.Image;
 
                 // only collide if player is falling and above the platform
-                return p.body.velocity.y >= 0 || p.body.bottom <= plat.body.top + 10;
+                return p.body.velocity.y >= 0 && p.body.bottom <= plat.body.top + 10;
             },
             this
         );
@@ -101,15 +102,13 @@ export class Game extends Scene {
                 let toNumber = toPos.charAt(1);
                 let dx = toLetter.charCodeAt(0) - fromLetter.charCodeAt(0);
                 let dy = parseInt(toNumber) - parseInt(fromNumber);
-                // console.log(dx, dy);
                 
-                if (dy > 0) { // do nothing, if move has a downwards component, to prevent player from moving off the screen
-                    const desiredVy = -Math.min(Math.sqrt(dy) * 300, 2000); // negative = up
-                    // if player is already going up slower than desired, boost it
-                    if (this.player.body.velocity.y > desiredVy) {
-                        this.player.setVelocityY(desiredVy);
-                    }
+                const desiredVy = -Math.sqrt(dy) * 400 // negative = up
+                // if player is already going up slower than desired, boost it
+                if (this.player.body.velocity.y > desiredVy) {
+                    this.player.setVelocityY(desiredVy);
                 }
+
                 this.player.setVelocityX(dx * 50);
             }
             
