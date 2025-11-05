@@ -104,7 +104,10 @@ export class Engine {
 					const game = new Chess(fen);
 					const allLegalMoves = game.moves({ verbose: true }) as Move[];
 					const blunderMoves = allLegalMoves
-						.map((move) => move.from + move.to)
+						.map((move) => {
+							const promotionSuffix = move.promotion ?? '';
+							return `${move.from}${move.to}${promotionSuffix}`;
+						})
 						.filter((candidate) => candidate !== bestMoveLan);
 
 					if (blunderMoves.length > 0) {
