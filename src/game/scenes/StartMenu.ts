@@ -15,9 +15,24 @@ export class StartMenu extends Scene {
     create() {
         this.camera = this.cameras.main;
 
-        this.background = this.add.image(0, 0, 'background')
+        const skySource = this.textures.get('sky').getSourceImage() as HTMLImageElement;
+        const skyScale = Math.max(
+            1,
+            Math.ceil(
+                Math.max(
+                    this.scale.width / skySource.width,
+                    this.scale.height / skySource.height
+                )
+            )
+        );
+        const displayWidth = skySource.width * skyScale;
+        const displayHeight = skySource.height * skyScale;
+        const offsetX = (this.scale.width - displayWidth) / 2;
+        const offsetY = (this.scale.height - displayHeight) / 2;
+
+        this.background = this.add.image(offsetX, offsetY, 'sky')
             .setOrigin(0, 0)
-            .setDisplaySize(this.scale.width, this.scale.height)
+            .setScale(skyScale)
             .setAlpha(0.5);
 
         this.add.text(this.scale.width / 2, 150, 'Welcome to ChessPlatform', {

@@ -10,9 +10,24 @@ export class Preloader extends Scene
     init ()
     {
         //  We loaded this image in our Boot Scene, so we can display it here
-        this.add.image(0, 0, 'background')
+        const skySource = this.textures.get('sky').getSourceImage() as HTMLImageElement;
+        const scaleFactor = Math.max(
+            1,
+            Math.ceil(
+                Math.max(
+                    this.scale.width / skySource.width,
+                    this.scale.height / skySource.height
+                )
+            )
+        );
+        const displayWidth = skySource.width * scaleFactor;
+        const displayHeight = skySource.height * scaleFactor;
+        const offsetX = (this.scale.width - displayWidth) / 2;
+        const offsetY = (this.scale.height - displayHeight) / 2;
+
+        this.add.image(offsetX, offsetY, 'sky')
             .setOrigin(0, 0)
-            .setDisplaySize(this.scale.width, this.scale.height);
+            .setScale(scaleFactor);
 
         
         this.add.text(300, 300, "Loading...")
@@ -36,9 +51,6 @@ export class Preloader extends Scene
     {
         //  Load the assets for the game - Replace with your own assets
         this.load.setPath('assets');
-
-        this.load.image('logo', 'logo.png');
-        this.load.image('star', 'star.png');
     }
 
     create ()

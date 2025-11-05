@@ -10,6 +10,7 @@ import { Leaderboard } from './scenes/Leaderboard';
 // https://docs.phaser.io/api-documentation/typedef/types-core#gameconfig
 const config: Phaser.Types.Core.GameConfig = {
     type: AUTO,
+    pixelArt: true,
     scale: {
         mode: Phaser.Scale.FIT,
         autoCenter: Phaser.Scale.CENTER_BOTH,
@@ -31,7 +32,12 @@ const config: Phaser.Types.Core.GameConfig = {
             arcade: {
                 gravity: { y: 200 }
             }
-        }
+        },
+    render: {
+        pixelArt: true,
+        antialias: false,
+        roundPixels: true
+    }
 };
 
 const StartGame = (parent: string): Game => {

@@ -7,6 +7,11 @@
         scene: Scene | null
     };
 
+    // TODOs:
+    // - Implement Multiplayer (using websockets)
+    // - Remove the phaser game scenes and implement the UI with sveltejs directly?
+    // - Change UI of chessboard to match the new platformer style
+    // - Change overall svelte ui to make Chess/Platformer side-by-side view more appealing
 </script>
 
 <script lang="ts">
