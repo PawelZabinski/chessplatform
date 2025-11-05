@@ -4,9 +4,6 @@ import { moves } from '$lib/stores/chess';
 
 let SCREEN_DIMENSIONS = [1024, 768]; // THESE ARE ORIGINAL VALUES, THEY WILL CHANGE TO MATCH ACTUAL SCREEN WIDTH AND HEIGHT
 
-// KNOWN ISSUE
-// TODO: Black for some reason isn't able to promote their piece, crashes the programme
-
 const LEVEL_HEIGHT = 150;
 const INITIAL_GROUND_YPOSITION = 800;
 const PLAYER_Y_GRAVITY = 350;
