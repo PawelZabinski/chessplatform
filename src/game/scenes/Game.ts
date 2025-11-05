@@ -4,8 +4,11 @@ import { moves } from '$lib/stores/chess';
 
 let SCREEN_DIMENSIONS = [1024, 768]; // THESE ARE ORIGINAL VALUES, THEY WILL CHANGE TO MATCH ACTUAL SCREEN WIDTH AND HEIGHT
 
+// KNOWN ISSUE
+// TODO: Black for some reason isn't able to promote their piece, crashes the programme
+
 const LEVEL_HEIGHT = 150;
-const INITIAL_GROUND_YPOSITION = 750;
+const INITIAL_GROUND_YPOSITION = 800;
 const PLAYER_Y_GRAVITY = 350;
 const PLAYER_COLLISION_BOUNCE = 0.2;
 const PLAYER_MAX_VELOCITY = 800;
@@ -16,10 +19,10 @@ const Y_VELOCITY_MULTIPLIER = 400;
 export class Game extends Scene {
     private player!: Phaser.Physics.Arcade.Sprite;
     private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
-    private currentLevel = 0;
-    private maxLevel = 0;
-    private highestLevelGenerated = 0;
-    private difficulty = "Novice";
+    private currentLevel!: number;
+    private maxLevel!: number;
+    private highestLevelGenerated!: number;
+    private difficulty!: string;
 
     constructor() {
         super('Game');
@@ -48,7 +51,6 @@ export class Game extends Scene {
     }
 
     handleSpikeCollision(player, spike) {
-        console.log('Player hit a spike!');
         spike.destroy();
         EventBus.emit(ChessEvents.removePiece, 'w');
     }
@@ -68,6 +70,11 @@ export class Game extends Scene {
 
     create() {
         SCREEN_DIMENSIONS = [this.scale.width, this.scale.height];
+
+        this.currentLevel = 0;
+        this.maxLevel = 0;
+        this.highestLevelGenerated = 0;
+
 
         // Repeating alternating (light blue, dark blue) sky pattern
         const skyHeight = SCREEN_DIMENSIONS[1];
@@ -192,20 +199,6 @@ export class Game extends Scene {
 
 
     update() {
-        // Control left and right movement
-        // if (this.cursors.left.isDown) {
-        //     this.player.setVelocityX(-260);
-        //     this.player.anims.play('left', true);
-        // }
-        // else if (this.cursors.right.isDown) {
-        //     this.player.setVelocityX(260);
-        //     this.player.anims.play('right', true);
-        // }
-        // else {
-        //     this.player.setVelocityX(0);
-        //     this.player.anims.play('turn');
-        // }
-
         // Handle jumping (only if the player is touching the ground)
         if (this.cursors.up.isDown && this.player.body.touching.down) {
             this.player.setVelocityY(-530);
