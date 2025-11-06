@@ -4,7 +4,7 @@ import { Scene } from 'phaser';
 export class StartMenu extends Scene {
     private camera!: Phaser.Cameras.Scene2D.Camera;
     private background!: Phaser.GameObjects.Image;
-    private selectedDifficulty: string = 'Normal';
+    private selectedDifficulty: string = 'Intermediate';
 
     private difficultyButton;
 

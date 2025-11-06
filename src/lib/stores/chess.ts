@@ -77,15 +77,90 @@ function createChessStateStore(): ChessStateStore {
 
 export const chessState = createChessStateStore();
 
+export type LeaderboardEntry = {
+	name: string;
+	score: number;
+	difficulty: string;
+};
+
+const LEADERBOARD_STORAGE_KEY = 'chessplatform-leaderboard';
+
 function createLeaderboardStore() {
-	const { subscribe, update } = writable([]);
+	const { subscribe, set, update } = writable<LeaderboardEntry[]>([]);
+	let hasHydrated = false;
+
+	const canUseStorage = () => typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
+
+	const loadFromStorage = (): LeaderboardEntry[] => {
+		if (!canUseStorage()) {
+			return [];
+		}
+
+		try {
+			const stored = window.localStorage.getItem(LEADERBOARD_STORAGE_KEY);
+			if (!stored) {
+				return [];
+			}
+
+			const parsed = JSON.parse(stored);
+			if (!Array.isArray(parsed)) {
+				return [];
+			}
+
+			return parsed.filter(
+				(entry): entry is LeaderboardEntry =>
+					typeof entry === 'object' &&
+					entry !== null &&
+					typeof entry.name === 'string' &&
+					typeof entry.score === 'number' &&
+					typeof entry.difficulty === 'string'
+			);
+		} catch (error) {
+			console.warn('Failed to read leaderboard from storage', error);
+			return [];
+		}
+	};
+
+	const persist = (rows: LeaderboardEntry[]) => {
+		if (!canUseStorage()) {
+			return;
+		}
+
+		try {
+			window.localStorage.setItem(LEADERBOARD_STORAGE_KEY, JSON.stringify(rows));
+		} catch (error) {
+			console.warn('Failed to persist leaderboard to storage', error);
+		}
+	};
+
+	const hydrateFromStorage = () => {
+		if (hasHydrated) {
+			return;
+		}
+		const hydrated = loadFromStorage();
+		set(hydrated);
+		hasHydrated = true;
+	};
+
+	if (canUseStorage()) {
+		hydrateFromStorage();
+	}
 
 	return {
 		subscribe,
-		add(row) {
-			// Update the leaderboard
-			update((leaderboard) => [...leaderboard, row]);
+		init() {
+			if (!canUseStorage()) {
+				return;
+			}
+			hydrateFromStorage();
 		},
+		add(row: LeaderboardEntry) {
+			update((currentRows) => {
+				const updated = [...currentRows, row];
+				persist(updated);
+				return updated;
+			});
+		}
 	};
 }
 

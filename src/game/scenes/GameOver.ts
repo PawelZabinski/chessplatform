@@ -8,7 +8,7 @@ export class GameOver extends Scene {
     private winner!: string;
     private maxScore!: number;
     private difficulty!: string;
-    private hasSavedToLeaderboard = false;
+    private hasSavedToLeaderboard!: boolean;
 
     constructor() {
         super('GameOver');
@@ -30,6 +30,8 @@ export class GameOver extends Scene {
         // background
         const camera = this.cameras.main 
         camera.setBackgroundColor(0xff0000);
+
+        this.hasSavedToLeaderboard = false;
 
         const bgKey = this.textures.exists('background') ? 'background' : 'sky';
         const bgSource = this.textures.get(bgKey).getSourceImage() as HTMLImageElement;

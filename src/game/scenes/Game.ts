@@ -5,7 +5,6 @@ import { moves } from '$lib/stores/chess';
 let SCREEN_DIMENSIONS = [1024, 768]; // THESE ARE ORIGINAL VALUES, THEY WILL CHANGE TO MATCH ACTUAL SCREEN WIDTH AND HEIGHT
 
 const LEVEL_HEIGHT = 200;
-const INITIAL_GROUND_YPOSITION = 800;
 const PLAYER_Y_GRAVITY = 350;
 const PLAYER_COLLISION_BOUNCE = 0.2;
 const PLAYER_MAX_VELOCITY = 800;
@@ -127,7 +126,7 @@ export class Game extends Scene {
         const startX = -this.groundTileWidth;
         for (let i = 0; i < tilesNeeded; i++) {
             const x = startX + i * this.groundTileWidth + this.groundTileWidth / 2;
-            const ground = this.platforms.create(x, INITIAL_GROUND_YPOSITION, 'ground') as Phaser.Physics.Arcade.Image;
+            const ground = this.platforms.create(x, SCREEN_DIMENSIONS[1] - 45, 'ground') as Phaser.Physics.Arcade.Image;
             ground.setData('blocked', true)
             ground.setScale(this.groundScale);
             ground.refreshBody();
@@ -238,7 +237,7 @@ export class Game extends Scene {
         this.hasDoubleJumped = false;
         this.currentAnimKey = null;
 
-        this.player = this.physics.add.sprite(SCREEN_DIMENSIONS[0]/2, INITIAL_GROUND_YPOSITION - 100, 'ninjaIdle', 0);
+        this.player = this.physics.add.sprite(SCREEN_DIMENSIONS[0]/2, SCREEN_DIMENSIONS[1] - 200, 'ninjaIdle', 0);
         this.player.setDisplaySize(64, 64)
         this.player.setBounce(PLAYER_COLLISION_BOUNCE);
         this.player.body.setGravityY(PLAYER_Y_GRAVITY);

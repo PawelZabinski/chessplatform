@@ -12,6 +12,7 @@
     // - Remove the phaser game scenes and implement the UI with sveltejs directly?
     // - Change UI of chessboard to match the new platformer style
     // - Change overall svelte ui to make Chess/Platformer side-by-side view more appealing
+    // - Figure out hosting and deployment - sort out build issues
 </script>
 
 <script lang="ts">
