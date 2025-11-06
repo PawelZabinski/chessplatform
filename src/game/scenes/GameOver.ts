@@ -31,10 +31,26 @@ export class GameOver extends Scene {
         const camera = this.cameras.main 
         camera.setBackgroundColor(0xff0000);
 
+        const bgKey = this.textures.exists('background') ? 'background' : 'sky';
+        const bgSource = this.textures.get(bgKey).getSourceImage() as HTMLImageElement;
+        const bgScale = Math.max(
+            1,
+            Math.ceil(
+                Math.max(
+                    this.scale.width / bgSource.width,
+                    this.scale.height / bgSource.height
+                )
+            )
+        );
+        const bgWidth = bgSource.width * bgScale;
+        const bgHeight = bgSource.height * bgScale;
+        const bgOffsetX = (this.scale.width - bgWidth) / 2;
+        const bgOffsetY = (this.scale.height - bgHeight) / 2;
+
         this.background = this.add
-            .image(0, 0, 'background')
+            .image(bgOffsetX, bgOffsetY, bgKey)
             .setOrigin(0, 0)
-            .setDisplaySize(this.scale.width, this.scale.height)
+            .setScale(bgScale)
             .setAlpha(0.3);
 
         // main title
