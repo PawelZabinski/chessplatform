@@ -5,6 +5,7 @@ import {
     LEVELS_PER_STAGE,
     levelsUntilNextStage,
     pickPlatformCount,
+    runeChance,
     stageForLevel,
     type StageConfig
 } from '../stages';
@@ -24,6 +25,13 @@ const Y_VELOCITY_MULTIPLIER = 400;
 const LEVELS_PER_COMBO_STEP = 5;
 const MAX_COMBO_MULTIPLIER = 4;
 
+/** How long a control rune grants direct movement, in milliseconds. */
+const CONTROL_DURATION_MS = 5000;
+/** Horizontal speed while the player has direct control. */
+const CONTROL_RUN_SPEED = 260;
+const CONTROL_JUMP_VELOCITY = -530;
+const CONTROL_DOUBLE_JUMP_VELOCITY = -500;
+
 export class Game extends Scene {
     private player!: Phaser.Physics.Arcade.Sprite;
     private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
@@ -42,6 +50,16 @@ export class Game extends Scene {
     private spikeHeight = 0;
     private groundTileWidth = 0;
     private skyScale = 1;
+
+    // Control rune (powerup) state
+    private runes!: Phaser.Physics.Arcade.Group;
+    private wasd!: Record<'up' | 'left' | 'right' | 'jump', Phaser.Input.Keyboard.Key>;
+    /** Scene time (ms) at which direct control lapses; 0 when inactive. */
+    private controlUntil = 0;
+    private controlBar!: Phaser.GameObjects.Rectangle;
+    private controlBarBg!: Phaser.GameObjects.Rectangle;
+    private controlLabel!: Phaser.GameObjects.Text;
+    private readonly controlBarWidth = 150;
 
     // Stage + scoring state
     private stage!: StageConfig;
@@ -104,18 +122,20 @@ export class Game extends Scene {
             if (!placed) {
                 continue;
             }
+            // Solid platforms use the stone texture, pass-through ones the wood.
             const isBlocked = Math.random() < stage.blockedChance;
-            const platform = this.platforms.create(x, y, 'platform') as Phaser.Physics.Arcade.Image;
+            const platform = this.platforms.create(
+                x,
+                y,
+                isBlocked ? 'platformSolid' : 'platform'
+            ) as Phaser.Physics.Arcade.Image;
             platform.setScale(this.platformScale);
             platform.refreshBody();
             platform.setData('blocked', isBlocked);
-            if (isBlocked) {
-                platform.setTint(0x333333)
-            } else {
-                platform.clearTint();
-            }
             const platformHeight = this.platformHeight;
 
+            // One roll decides between spike, rune or nothing, so a platform
+            // never carries both and runes stay exactly half as common as spikes.
             const randChance = Math.random();
             if (randChance < stage.spikeChance) {
                 const maxOffset = Math.max(0, Math.floor(this.platformHalfWidth - this.spikeHalfWidth));
@@ -135,8 +155,128 @@ export class Game extends Scene {
                 const bodyWidth = this.spikeHalfWidth * 2;
                 const bodyHeight = this.spikeHeight;
                 spike.body.setSize(bodyWidth, bodyHeight, true);
+            } else if (randChance < stage.spikeChance + runeChance(stage)) {
+                this.createRune(x, y - platformHeight / 2 - 34);
             }
         }
+    }
+
+    /**
+     * Solid platforms block the player from below; pass-through ones can be
+     * jumped up through. They used to share one texture with a tint that the
+     * Canvas renderer ignores, so the two were indistinguishable.
+     *
+     * This draws a cold grey stone slab, at exactly the source texture's
+     * dimensions so physics bodies are unchanged. Warm wood now reads as
+     * "jump through it", cold banded stone as "solid".
+     */
+    private createSolidPlatformTexture() {
+        if (this.textures.exists('platformSolid')) {
+            return;
+        }
+
+        const source = this.textures.get('platform').getSourceImage() as HTMLImageElement;
+        const w = source.width;
+        const h = source.height;
+        const g = this.make.graphics({ x: 0, y: 0 }, false);
+
+        // Slate body with a bright cap so the blocking top edge is obvious.
+        g.fillStyle(0x5c6068, 1);
+        g.fillRect(0, 0, w, h);
+        g.fillStyle(0x9aa3ad, 1);
+        g.fillRect(0, 0, w, 1);
+        g.fillStyle(0x3a3e45, 1);
+        g.fillRect(0, h - 1, w, 1);
+
+        // Iron banding at each end and centre, to read as reinforced stone.
+        g.fillStyle(0x2f333a, 1);
+        [1, Math.floor(w / 2) - 1, w - 3].forEach((bx) => g.fillRect(bx, 1, 2, h - 2));
+
+        g.generateTexture('platformSolid', w, h);
+        g.destroy();
+    }
+
+    /**
+     * Draws the control rune texture once, in code, so the powerup needs no new
+     * image asset and stays on-palette with the rest of the medieval UI.
+     */
+    private createRuneTexture() {
+        if (this.textures.exists('rune')) {
+            return;
+        }
+
+        const size = 34;
+        const g = this.make.graphics({ x: 0, y: 0 }, false);
+
+        // Outer glow, then a gold diamond with a pale core.
+        g.fillStyle(PALETTE.gold, 0.25);
+        g.fillCircle(size / 2, size / 2, size / 2);
+        g.fillStyle(PALETTE.goldBright, 0.9);
+        g.fillCircle(size / 2, size / 2, size / 2 - 5);
+
+        g.fillStyle(PALETTE.oak, 1);
+        g.beginPath();
+        g.moveTo(size / 2, 6);
+        g.lineTo(size - 7, size / 2);
+        g.lineTo(size / 2, size - 6);
+        g.lineTo(7, size / 2);
+        g.closePath();
+        g.fillPath();
+
+        g.fillStyle(PALETTE.goldBright, 1);
+        g.beginPath();
+        g.moveTo(size / 2, 12);
+        g.lineTo(size - 13, size / 2);
+        g.lineTo(size / 2, size - 12);
+        g.lineTo(13, size / 2);
+        g.closePath();
+        g.fillPath();
+
+        g.generateTexture('rune', size, size);
+        g.destroy();
+    }
+
+    /** Places a control rune hovering above a platform, with a gentle bob. */
+    private createRune(x: number, y: number) {
+        const rune = this.runes.create(x, y, 'rune') as Phaser.Physics.Arcade.Sprite;
+        rune.setDepth(6);
+        rune.body.setAllowGravity(false);
+        rune.body.setImmovable(true);
+        rune.body.moves = false;
+
+        this.tweens.add({
+            targets: rune,
+            y: y - 10,
+            duration: 1100,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut'
+        });
+        this.tweens.add({
+            targets: rune,
+            scaleX: 0.85,
+            scaleY: 1.1,
+            duration: 800,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut'
+        });
+    }
+
+    /** Picking up a rune grants CONTROL_DURATION_MS of direct movement. */
+    handleRuneCollision(player, rune) {
+        rune.destroy();
+
+        const wasActive = this.isControlActive();
+        // Picking up while already active refreshes rather than stacks.
+        this.controlUntil = this.time.now + CONTROL_DURATION_MS;
+
+        this.flashMessage(wasActive ? 'CONTROL EXTENDED' : 'CONTROL — 5s', GOLD_BRIGHT);
+        this.cameras.main.flash(180, 240, 210, 100, false);
+    }
+
+    private isControlActive() {
+        return this.controlUntil > this.time.now;
     }
 
     handleSpikeCollision(player, spike) {
@@ -333,6 +473,13 @@ export class Game extends Scene {
             allowGravity: false,
             immovable: true
         });
+        this.runes = this.physics.add.group({
+            allowGravity: false,
+            immovable: true
+        });
+        this.createSolidPlatformTexture();
+        this.createRuneTexture();
+        this.controlUntil = 0;
         if (!this.anims.exists('ninja-idle')) {
             this.anims.create({
                 key: 'ninja-idle',
@@ -415,8 +562,18 @@ export class Game extends Scene {
 
         // Enable overlap detection for spikes with player
         this.physics.add.overlap(this.player, this.spikes, this.handleSpikeCollision, null, this);
+        this.physics.add.overlap(this.player, this.runes, this.handleRuneCollision, null, this);
 
         this.cursors = this.input.keyboard.createCursorKeys();
+
+        // WASD mirrors the arrow keys while a control rune is active.
+        const Key = Phaser.Input.Keyboard.KeyCodes;
+        this.wasd = {
+            up: this.input.keyboard.addKey(Key.W),
+            left: this.input.keyboard.addKey(Key.A),
+            right: this.input.keyboard.addKey(Key.D),
+            jump: this.input.keyboard.addKey(Key.SPACE)
+        };
 
         this.buildHud();
 
@@ -485,15 +642,7 @@ export class Game extends Scene {
             this.hasDoubleJumped = false;
         }
 
-        if (this.cursors?.up && Phaser.Input.Keyboard.JustDown(this.cursors.up)) {
-            if (onGround) {
-                this.player.setVelocityY(-530);
-                this.playAnimation('ninja-jump', false);
-            } else if (!this.hasDoubleJumped) {
-                this.player.setVelocityY(-500);
-                this.triggerDoubleJump();
-            }
-        }
+        this.updateDirectControl(onGround);
 
         let desiredAnimation = this.currentAnimKey ?? 'ninja-idle';
         if (!onGround) {
@@ -537,6 +686,56 @@ export class Game extends Scene {
         }
 
         this.updateHud();
+    }
+
+    /**
+     * Direct control while a rune is active: arrows or WASD steer, up/W/space
+     * jump and double-jump. Jumping stays available at all times (it always was),
+     * but horizontal steering is the rune's gift.
+     *
+     * When the timer lapses the player is brought to a horizontal standstill, so
+     * control ending can never carry them off the edge of a platform.
+     */
+    private updateDirectControl(onGround: boolean) {
+        const controlActive = this.isControlActive();
+
+        const jumpPressed =
+            (this.cursors?.up && Phaser.Input.Keyboard.JustDown(this.cursors.up)) ||
+            Phaser.Input.Keyboard.JustDown(this.wasd.up) ||
+            Phaser.Input.Keyboard.JustDown(this.wasd.jump);
+
+        if (jumpPressed) {
+            if (onGround) {
+                this.player.setVelocityY(CONTROL_JUMP_VELOCITY);
+                this.playAnimation('ninja-jump', false);
+            } else if (!this.hasDoubleJumped) {
+                this.player.setVelocityY(CONTROL_DOUBLE_JUMP_VELOCITY);
+                this.triggerDoubleJump();
+            }
+        }
+
+        if (controlActive) {
+            const left = this.cursors?.left?.isDown || this.wasd.left.isDown;
+            const right = this.cursors?.right?.isDown || this.wasd.right.isDown;
+
+            if (left && !right) {
+                this.player.setVelocityX(-CONTROL_RUN_SPEED);
+                this.player.setFlipX(true);
+            } else if (right && !left) {
+                this.player.setVelocityX(CONTROL_RUN_SPEED);
+                this.player.setFlipX(false);
+            } else {
+                this.player.setVelocityX(0);
+            }
+            return;
+        }
+
+        // Control just lapsed — stop dead horizontally rather than sliding off.
+        if (this.controlUntil !== 0) {
+            this.controlUntil = 0;
+            this.player.setVelocityX(0);
+            this.flashMessage('CONTROL LOST', '#c98a8a');
+        }
     }
 
     /** Steps the multiplier up every LEVELS_PER_COMBO_STEP clean levels. */
@@ -641,6 +840,31 @@ export class Game extends Scene {
             stroke: '#140d06',
             strokeThickness: 4
         }).setOrigin(0, 0.5).setDepth(50).setScrollFactor(0);
+
+        // Control-rune timer, hidden until a rune is picked up.
+        const controlY = hudY + hudHeight / 2 + 22;
+
+        this.controlLabel = this.add.text(centerX, controlY - 12, 'CONTROL', {
+            fontFamily: FONT_BODY,
+            fontSize: '13px',
+            color: GOLD_BRIGHT,
+            stroke: '#140d06',
+            strokeThickness: 3
+        }).setOrigin(0.5).setDepth(50).setScrollFactor(0).setVisible(false);
+
+        this.controlBarBg = this.add
+            .rectangle(centerX, controlY + 6, this.controlBarWidth + 4, 12, PALETTE.oak, 0.9)
+            .setStrokeStyle(1, PALETTE.gold, 0.8)
+            .setDepth(49)
+            .setScrollFactor(0)
+            .setVisible(false);
+
+        this.controlBar = this.add
+            .rectangle(centerX - this.controlBarWidth / 2, controlY + 6, this.controlBarWidth, 8, PALETTE.goldBright, 1)
+            .setOrigin(0, 0.5)
+            .setDepth(50)
+            .setScrollFactor(0)
+            .setVisible(false);
     }
 
     private updateHud() {
@@ -650,6 +874,17 @@ export class Game extends Scene {
         this.stageProgressBar.width = this.stageProgressWidth * Phaser.Math.Clamp(progress, 0, 1);
 
         this.comboText.setText(this.comboMultiplier > 1 ? `x${this.comboMultiplier}` : '');
+
+        const remaining = Math.max(0, this.controlUntil - this.time.now);
+        const showControl = remaining > 0;
+        this.controlLabel.setVisible(showControl);
+        this.controlBarBg.setVisible(showControl);
+        this.controlBar.setVisible(showControl);
+
+        if (showControl) {
+            this.controlBar.width = this.controlBarWidth * (remaining / CONTROL_DURATION_MS);
+            this.controlLabel.setText(`CONTROL  ${(remaining / 1000).toFixed(1)}s`);
+        }
     }
 
     changeScene() {

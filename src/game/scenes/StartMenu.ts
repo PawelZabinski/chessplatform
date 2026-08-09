@@ -82,8 +82,10 @@ export class StartMenu extends Scene {
         this.add.rectangle(x, y, 640, 2, PALETTE.gold, 0.5);
 
         const lines = [
-            '↑  jump  ·  double-jump in mid-air',
+            '↑ / W / space  jump  ·  double-jump in mid-air',
             'a chess move launches the ninja — files steer, ranks lift',
+            'gold runes grant 5s of direct steering with ← → or A D',
+            'wooden planks can be jumped through — grey stone cannot',
             'spikes cost you a piece  ·  clearing a stage wins one back'
         ];
 

@@ -103,6 +103,14 @@ export function levelsUntilNextStage(level: number): number {
 	return LEVELS_PER_STAGE - (level % LEVELS_PER_STAGE);
 }
 
+/**
+ * Control runes are deliberately half as common as spikes, so hazard and relief
+ * scale together as stages get harder.
+ */
+export function runeChance(stage: StageConfig): number {
+	return stage.spikeChance / 2;
+}
+
 /** Picks 1, 2 or 3 platforms according to the stage's weighting. */
 export function pickPlatformCount(stage: StageConfig, roll: number): number {
 	const [one, two] = stage.platformWeights;
