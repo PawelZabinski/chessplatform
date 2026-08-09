@@ -25,8 +25,10 @@ const Y_VELOCITY_MULTIPLIER = 400;
 const LEVELS_PER_COMBO_STEP = 5;
 const MAX_COMBO_MULTIPLIER = 4;
 
-/** How long a control rune grants direct movement, in milliseconds. */
+/** How much direct-control time a single rune grants, in milliseconds. */
 const CONTROL_DURATION_MS = 5000;
+/** Runes stack, but banked control time is capped here. */
+const CONTROL_MAX_MS = 10000;
 /** Horizontal speed while the player has direct control. */
 const CONTROL_RUN_SPEED = 260;
 const CONTROL_JUMP_VELOCITY = -530;
@@ -263,15 +265,26 @@ export class Game extends Scene {
         });
     }
 
-    /** Picking up a rune grants CONTROL_DURATION_MS of direct movement. */
+    /**
+     * Picking up a rune adds CONTROL_DURATION_MS of direct movement. Runes stack
+     * onto whatever time is left, up to CONTROL_MAX_MS.
+     */
     handleRuneCollision(player, rune) {
         rune.destroy();
 
-        const wasActive = this.isControlActive();
-        // Picking up while already active refreshes rather than stacks.
-        this.controlUntil = this.time.now + CONTROL_DURATION_MS;
+        const remaining = Math.max(0, this.controlUntil - this.time.now);
+        const banked = Math.min(remaining + CONTROL_DURATION_MS, CONTROL_MAX_MS);
+        const gained = banked - remaining;
+        this.controlUntil = this.time.now + banked;
 
-        this.flashMessage(wasActive ? 'CONTROL EXTENDED' : 'CONTROL — 5s', GOLD_BRIGHT);
+        const label =
+            gained < CONTROL_DURATION_MS
+                ? `CONTROL MAXED — ${(banked / 1000).toFixed(0)}s`
+                : remaining > 0
+                ? `CONTROL +5s — ${(banked / 1000).toFixed(0)}s`
+                : 'CONTROL — 5s';
+
+        this.flashMessage(label, GOLD_BRIGHT);
         this.cameras.main.flash(180, 240, 210, 100, false);
     }
 
@@ -689,15 +702,33 @@ export class Game extends Scene {
     }
 
     /**
-     * Direct control while a rune is active: arrows or WASD steer, up/W/space
-     * jump and double-jump. Jumping stays available at all times (it always was),
-     * but horizontal steering is the rune's gift.
+     * Keyboard movement is entirely a gift of the control rune. Without one the
+     * climb is driven by the chess board alone; the only key that does anything
+     * is space, which brakes the player to a horizontal stop.
+     *
+     * While a rune is active: arrows or WASD steer, and up/W/space jump and
+     * double-jump.
      *
      * When the timer lapses the player is brought to a horizontal standstill, so
      * control ending can never carry them off the edge of a platform.
      */
     private updateDirectControl(onGround: boolean) {
         const controlActive = this.isControlActive();
+
+        if (!controlActive) {
+            // Control just lapsed — stop dead rather than sliding off.
+            if (this.controlUntil !== 0) {
+                this.controlUntil = 0;
+                this.player.setVelocityX(0);
+                this.flashMessage('CONTROL LOST', '#c98a8a');
+            }
+
+            // Space is a brake, never a jump, while unpowered.
+            if (Phaser.Input.Keyboard.JustDown(this.wasd.jump)) {
+                this.player.setVelocityX(0);
+            }
+            return;
+        }
 
         const jumpPressed =
             (this.cursors?.up && Phaser.Input.Keyboard.JustDown(this.cursors.up)) ||
@@ -714,27 +745,17 @@ export class Game extends Scene {
             }
         }
 
-        if (controlActive) {
-            const left = this.cursors?.left?.isDown || this.wasd.left.isDown;
-            const right = this.cursors?.right?.isDown || this.wasd.right.isDown;
+        const left = this.cursors?.left?.isDown || this.wasd.left.isDown;
+        const right = this.cursors?.right?.isDown || this.wasd.right.isDown;
 
-            if (left && !right) {
-                this.player.setVelocityX(-CONTROL_RUN_SPEED);
-                this.player.setFlipX(true);
-            } else if (right && !left) {
-                this.player.setVelocityX(CONTROL_RUN_SPEED);
-                this.player.setFlipX(false);
-            } else {
-                this.player.setVelocityX(0);
-            }
-            return;
-        }
-
-        // Control just lapsed — stop dead horizontally rather than sliding off.
-        if (this.controlUntil !== 0) {
-            this.controlUntil = 0;
+        if (left && !right) {
+            this.player.setVelocityX(-CONTROL_RUN_SPEED);
+            this.player.setFlipX(true);
+        } else if (right && !left) {
+            this.player.setVelocityX(CONTROL_RUN_SPEED);
+            this.player.setFlipX(false);
+        } else {
             this.player.setVelocityX(0);
-            this.flashMessage('CONTROL LOST', '#c98a8a');
         }
     }
 
@@ -882,7 +903,8 @@ export class Game extends Scene {
         this.controlBar.setVisible(showControl);
 
         if (showControl) {
-            this.controlBar.width = this.controlBarWidth * (remaining / CONTROL_DURATION_MS);
+            // Scaled against the cap so a stacked rune visibly extends the bar.
+            this.controlBar.width = this.controlBarWidth * (remaining / CONTROL_MAX_MS);
             this.controlLabel.setText(`CONTROL  ${(remaining / 1000).toFixed(1)}s`);
         }
     }
