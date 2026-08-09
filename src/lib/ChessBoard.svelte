@@ -29,15 +29,25 @@
 		});
 	}
 
+	function restoreFallenPiece(colour: Color = 'w'): void {
+		chessState.restoreFallenPiece(colour, (newFen) => {
+			chessboard?.load(newFen);
+		});
+	}
+
 	onMount(() => {
 		const removeListener = colour => removeRandomPiece(colour);
 		EventBus.on(ChessEvents.removePiece, removeListener);
+
+		const restoreListener = colour => restoreFallenPiece(colour);
+		EventBus.on(ChessEvents.restorePiece, restoreListener);
 
         const resetListener = () => chessState.reset(newFen => chessboard?.load(newFen))
         EventBus.on(ChessEvents.resetBoard, resetListener)
 
 		return () => {
 			EventBus.off(ChessEvents.removePiece, removeListener);
+			EventBus.off(ChessEvents.restorePiece, restoreListener);
             EventBus.off(ChessEvents.resetBoard, resetListener)
 		};
 	});

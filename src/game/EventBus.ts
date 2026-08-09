@@ -9,6 +9,8 @@ export const ChessEvents = {
 	selectDifficulty: 'chess:select-difficulty',
 	enPassant: 'chess:en-passant',
 	removePiece: 'chess:remove-piece',
+	/** Stage reward: put the most recently lost piece back on the board. */
+	restorePiece: 'chess:restore-piece',
 	resetBoard: 'chess:reset-board',
 	gameOver: 'chess:game-over'
 } as const;

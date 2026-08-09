@@ -1,65 +1,80 @@
 import { Scene } from 'phaser';
+import { PALETTE, GOLD_BRIGHT, PARCHMENT, FONT_BODY, FONT_DISPLAY, drawBackdrop } from '../theme';
 
-export class Preloader extends Scene
-{
-    constructor ()
-    {
+/** Webfonts Phaser text depends on; canvas text won't reflow once drawn. */
+const REQUIRED_FONTS = [
+    '700 32px "Cinzel Decorative"',
+    '900 32px "Cinzel Decorative"',
+    '400 24px "Cinzel"',
+    '600 24px "Cinzel"'
+];
+
+export class Preloader extends Scene {
+    private bar!: Phaser.GameObjects.Rectangle;
+
+    constructor() {
         super('Preloader');
     }
 
-    init ()
-    {
-        //  We loaded this image in our Boot Scene, so we can display it here
-        const skySource = this.textures.get('sky').getSourceImage() as HTMLImageElement;
-        const scaleFactor = Math.max(
-            1,
-            Math.ceil(
-                Math.max(
-                    this.scale.width / skySource.width,
-                    this.scale.height / skySource.height
-                )
-            )
-        );
-        const displayWidth = skySource.width * scaleFactor;
-        const displayHeight = skySource.height * scaleFactor;
-        const offsetX = (this.scale.width - displayWidth) / 2;
-        const offsetY = (this.scale.height - displayHeight) / 2;
+    init() {
+        const centerX = this.scale.width / 2;
+        const centerY = this.scale.height / 2;
 
-        this.add.image(offsetX, offsetY, 'sky')
-            .setOrigin(0, 0)
-            .setScale(scaleFactor);
+        drawBackdrop(this);
 
-        
-        this.add.text(300, 300, "Loading...")
-        
-        //  A simple progress bar. This is the outline of the bar.
-        this.add.rectangle(512, 384, 468, 32).setStrokeStyle(1, 0xffffff);
+        this.add
+            .text(centerX, centerY - 70, 'ChessPlatform', {
+                fontFamily: FONT_DISPLAY,
+                fontSize: 44,
+                color: GOLD_BRIGHT,
+                stroke: '#1a1109',
+                strokeThickness: 6
+            })
+            .setOrigin(0.5);
 
-        //  This is the progress bar itself. It will increase in size from the left based on the % of progress.
-        const bar = this.add.rectangle(512-230, 384, 4, 28, 0xffffff);
+        this.add
+            .text(centerX, centerY - 20, 'preparing the climb…', {
+                fontFamily: FONT_BODY,
+                fontSize: 18,
+                color: PARCHMENT
+            })
+            .setOrigin(0.5);
 
-        //  Use the 'progress' event emitted by the LoaderPlugin to update the loading bar
+        const barWidth = 420;
+        this.add
+            .rectangle(centerX, centerY + 30, barWidth + 10, 26, PALETTE.oak, 0.9)
+            .setStrokeStyle(2, PALETTE.gold, 0.8);
+
+        this.bar = this.add
+            .rectangle(centerX - barWidth / 2, centerY + 30, 4, 16, PALETTE.gold, 1)
+            .setOrigin(0, 0.5);
+
         this.load.on('progress', (progress: number) => {
-
-            //  Update the progress bar (our bar is 464px wide, so 100% = 464px)
-            bar.width = 4 + (460 * progress);
-
+            this.bar.width = 4 + (barWidth - 8) * progress;
         });
     }
 
-    preload ()
-    {
-        //  Load the assets for the game - Replace with your own assets
+    preload() {
         this.load.setPath('assets');
     }
 
-    create ()
-    {
-        //  When all the assets have loaded, it's often worth creating global objects here that the rest of the game can use.
-        //  For example, you can define global animations here, so we can use them in other scenes.
+    async create() {
+        // Phaser renders text to canvas once, so a font that arrives late would
+        // leave every label in the fallback serif. Wait for them before the menu.
+        await this.loadFonts();
+        this.scene.start('StartMenu');
+    }
 
-        // reason: string, result: number, maxScore: number
-        //  Move to the MainMenu. You could also swap this for a Scene Transition, such as a camera fade.
-        this.scene.start("StartMenu");
+    private async loadFonts() {
+        if (typeof document === 'undefined' || !document.fonts) {
+            return;
+        }
+
+        try {
+            await Promise.all(REQUIRED_FONTS.map((font) => document.fonts.load(font)));
+            await document.fonts.ready;
+        } catch {
+            // A font CDN failure shouldn't block the game; fall back to serif.
+        }
     }
 }

@@ -12,13 +12,13 @@ const config: Phaser.Types.Core.GameConfig = {
     type: AUTO,
     pixelArt: true,
     scale: {
-        mode: Phaser.Scale.FIT,
-        autoCenter: Phaser.Scale.CENTER_BOTH,
-        width: window.innerWidth,
-        height: window.innerHeight
+        // RESIZE makes the canvas track its container, so the game fills the
+        // column beside the board instead of being letterboxed inside it.
+        mode: Phaser.Scale.RESIZE,
+        autoCenter: Phaser.Scale.CENTER_BOTH
     },
     parent: 'game-container',
-    backgroundColor: '#028af8',
+    backgroundColor: '#0b0704',
     scene: [
         Boot,
         Preloader,

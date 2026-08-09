@@ -1,6 +1,14 @@
 import { Scene } from 'phaser';
 import { ChessEvents, EventBus } from '../EventBus';
 import { moves } from '$lib/stores/chess';
+import {
+    LEVELS_PER_STAGE,
+    levelsUntilNextStage,
+    pickPlatformCount,
+    stageForLevel,
+    type StageConfig
+} from '../stages';
+import { PALETTE, INK, INK_SOFT, GOLD_BRIGHT, FONT_BODY, FONT_DISPLAY } from '../theme';
 
 let SCREEN_DIMENSIONS = [1024, 768]; // THESE ARE ORIGINAL VALUES, THEY WILL CHANGE TO MATCH ACTUAL SCREEN WIDTH AND HEIGHT
 
@@ -11,6 +19,10 @@ const PLAYER_MAX_VELOCITY = 800;
 
 const X_VELOCITY_MULTIPLIER = 50;
 const Y_VELOCITY_MULTIPLIER = 400;
+
+/** Levels climbed without touching a spike before the combo multiplier steps up. */
+const LEVELS_PER_COMBO_STEP = 5;
+const MAX_COMBO_MULTIPLIER = 4;
 
 export class Game extends Scene {
     private player!: Phaser.Physics.Arcade.Sprite;
@@ -30,11 +42,23 @@ export class Game extends Scene {
     private spikeHeight = 0;
     private groundTileWidth = 0;
     private skyScale = 1;
+
+    // Stage + scoring state
+    private stage!: StageConfig;
+    private score!: number;
+    private cleanLevelStreak!: number;
+    private comboMultiplier!: number;
+    private stagesCleared!: number;
+
+    // HUD
     private hudBackground!: Phaser.GameObjects.Rectangle;
     private scoreLabel!: Phaser.GameObjects.Text;
     private scoreValueText!: Phaser.GameObjects.Text;
-    private maxLabel!: Phaser.GameObjects.Text;
-    private maxValueText!: Phaser.GameObjects.Text;
+    private stageLabel!: Phaser.GameObjects.Text;
+    private stageValueText!: Phaser.GameObjects.Text;
+    private comboText!: Phaser.GameObjects.Text;
+    private stageProgressBar!: Phaser.GameObjects.Rectangle;
+    private stageProgressWidth = 240;
 
     constructor() {
         super('Game');
@@ -45,9 +69,11 @@ export class Game extends Scene {
     }
 
     createLevel(level) {
+        // Generation is driven by the stage the band belongs to, not by the
+        // player's current stage, so pre-generated bands stay consistent.
+        const stage = stageForLevel(level);
         const y = SCREEN_DIMENSIONS[1] - level * LEVEL_HEIGHT;
-        const rand = Math.random();
-        const numberPlatforms = rand < 0.1 ? 1 : (rand < 0.75 ? 2 : 3);
+        const numberPlatforms = pickPlatformCount(stage, Math.random());
         const halfWidth = this.platformHalfWidth || 0;
         const minX = Math.max(halfWidth, 0);
         const maxX = SCREEN_DIMENSIONS[0] - halfWidth;
@@ -78,7 +104,7 @@ export class Game extends Scene {
             if (!placed) {
                 continue;
             }
-            const isBlocked = Math.random() < 0.2;
+            const isBlocked = Math.random() < stage.blockedChance;
             const platform = this.platforms.create(x, y, 'platform') as Phaser.Physics.Arcade.Image;
             platform.setScale(this.platformScale);
             platform.refreshBody();
@@ -91,7 +117,7 @@ export class Game extends Scene {
             const platformHeight = this.platformHeight;
 
             const randChance = Math.random();
-            if (randChance < 0.1) {
+            if (randChance < stage.spikeChance) {
                 const maxOffset = Math.max(0, Math.floor(this.platformHalfWidth - this.spikeHalfWidth));
                 const randPos = Phaser.Math.Between(-maxOffset, maxOffset);
                 const spikeX = Phaser.Math.Clamp(
@@ -116,6 +142,115 @@ export class Game extends Scene {
     handleSpikeCollision(player, spike) {
         spike.destroy();
         EventBus.emit(ChessEvents.removePiece, 'w');
+
+        // Losing a piece breaks the clean-climb streak.
+        this.cleanLevelStreak = 0;
+        this.comboMultiplier = 1;
+        this.cameras.main.shake(180, 0.006);
+        this.flashMessage('-1 PIECE', '#ff8080');
+    }
+
+    /**
+     * En passant is the one chess move with no direct platformer analogue, so it
+     * gets its own reward: every spike currently on screen is destroyed.
+     */
+    private handleEnPassant() {
+        const camera = this.cameras.main;
+        const top = camera.scrollY;
+        const bottom = top + camera.height;
+
+        let cleared = 0;
+        (this.spikes.getChildren() as Phaser.Physics.Arcade.Sprite[])
+            .filter((spike) => spike.y >= top && spike.y <= bottom)
+            .forEach((spike) => {
+                spike.destroy();
+                cleared += 1;
+            });
+
+        if (cleared > 0) {
+            this.flashMessage(`EN PASSANT — ${cleared} SPIKE${cleared > 1 ? 'S' : ''} CLEARED`, '#ffe680');
+        }
+    }
+
+    /** Short-lived centred toast, used for combo/stage/hazard feedback. */
+    private flashMessage(text: string, color: string) {
+        const message = this.add
+            .text(this.scale.width / 2, 120, text, {
+                fontFamily: FONT_DISPLAY,
+                fontSize: '26px',
+                color,
+                stroke: '#140d06',
+                strokeThickness: 5
+            })
+            .setOrigin(0.5)
+            .setDepth(60)
+            .setScrollFactor(0);
+
+        this.tweens.add({
+            targets: message,
+            y: 92,
+            alpha: 0,
+            duration: 1200,
+            ease: 'Cubic.easeOut',
+            onComplete: () => message.destroy()
+        });
+    }
+
+    /** Full-width heraldic banner announcing a new stage. */
+    private showStageBanner(stage: StageConfig) {
+        const centerX = this.scale.width / 2;
+        const centerY = this.scale.height / 2 - 60;
+
+        const backing = this.add
+            .rectangle(centerX, centerY, this.scale.width, 96, PALETTE.oak, 0.85)
+            .setDepth(58)
+            .setScrollFactor(0);
+
+        const rules = [
+            this.add.rectangle(centerX, centerY - 46, this.scale.width, 2, PALETTE.gold, 0.9),
+            this.add.rectangle(centerX, centerY + 46, this.scale.width, 2, PALETTE.gold, 0.9)
+        ].map((rule) => rule.setDepth(59).setScrollFactor(0));
+
+        const title = this.add
+            .text(centerX, centerY - 10, `STAGE ${stage.index}`, {
+                fontFamily: FONT_BODY,
+                fontSize: '16px',
+                color: '#e8d8b0'
+            })
+            .setOrigin(0.5)
+            .setDepth(60)
+            .setScrollFactor(0);
+
+        const name = this.add
+            .text(centerX, centerY + 16, stage.name, {
+                fontFamily: FONT_DISPLAY,
+                fontSize: '38px',
+                color: stage.accent,
+                stroke: '#140d06',
+                strokeThickness: 5
+            })
+            .setOrigin(0.5)
+            .setDepth(60)
+            .setScrollFactor(0);
+
+        const parts = [backing, ...rules, title, name];
+        parts.forEach((part) => part.setAlpha(0));
+
+        this.tweens.add({
+            targets: parts,
+            alpha: 1,
+            duration: 260,
+            ease: 'Quad.easeOut',
+            onComplete: () => {
+                this.tweens.add({
+                    targets: parts,
+                    alpha: 0,
+                    delay: 900,
+                    duration: 420,
+                    onComplete: () => parts.forEach((part) => part.destroy())
+                });
+            }
+        });
     }
 
     private createGroundTiles() {
@@ -150,6 +285,12 @@ export class Game extends Scene {
         this.currentLevel = 0;
         this.maxLevel = 0;
         this.highestLevelGenerated = 0;
+
+        this.stage = stageForLevel(0);
+        this.score = 0;
+        this.cleanLevelStreak = 0;
+        this.comboMultiplier = 1;
+        this.stagesCleared = 0;
 
         const platformSource = this.textures.get('platform').getSourceImage() as HTMLImageElement;
         const platformWidth = platformSource.width * this.platformScale;
@@ -277,47 +418,24 @@ export class Game extends Scene {
 
         this.cursors = this.input.keyboard.createCursorKeys();
 
-        const hudY = 30;
-        const centerX = this.scale.width / 2;
-        this.hudBackground = this.add.rectangle(centerX, hudY, 280, 38, 0xffffff, 0.65)
-            .setOrigin(0.5, 0.5)
-            .setStrokeStyle(2, 0xffffff, 0.6)
-            .setDepth(45)
-            .setScrollFactor(0);
-
-        this.scoreLabel = this.add.text(centerX - 110, hudY, 'score', {
-            fontFamily: 'Arial',
-            fontSize: '18px',
-            fontStyle: 'bold',
-            color: '#1f2937'
-        }).setOrigin(0, 0.5).setDepth(50).setScrollFactor(0);
-
-        this.scoreValueText = this.add.text(centerX - 45, hudY, '0', {
-            fontFamily: 'Arial Black',
-            fontSize: '24px',
-            fontStyle: 'bold',
-            color: '#111827'
-        }).setOrigin(0, 0.5).setDepth(50).setScrollFactor(0);
-
-        this.maxLabel = this.add.text(centerX + 10, hudY, 'max', {
-            fontFamily: 'Arial',
-            fontSize: '18px',
-            fontStyle: 'bold',
-            color: '#1f2937'
-        }).setOrigin(0, 0.5).setDepth(50).setScrollFactor(0);
-
-        this.maxValueText = this.add.text(centerX + 70, hudY, '0', {
-            fontFamily: 'Arial Black',
-            fontSize: '24px',
-            fontStyle: 'bold',
-            color: '#111827'
-        }).setOrigin(0, 0.5).setDepth(50).setScrollFactor(0);
+        this.buildHud();
 
         EventBus.emit('current-scene-ready', this);
 
+        const handleEnPassant = () => this.handleEnPassant();
+        EventBus.on(ChessEvents.enPassant, handleEnPassant);
+
         const handleGameOver = (detail) => {
-            this.scene.start("GameOver", { reason: detail.reason, result: detail.result, 
-                maxScore: detail.result == "You've won the chess game!" ? this.maxLevel * 20 : this.maxLevel * 10, difficulty: this.difficulty })
+            // Winning the chess game doubles the climb score.
+            const finalScore = detail.result === 1 ? this.score * 2 : this.score;
+            this.scene.start("GameOver", {
+                reason: detail.reason,
+                result: detail.result,
+                maxScore: Math.round(finalScore),
+                stageName: this.stage.name,
+                stagesCleared: this.stagesCleared,
+                difficulty: this.difficulty
+            })
         }
         EventBus.on(ChessEvents.gameOver, handleGameOver);
 
@@ -355,6 +473,7 @@ export class Game extends Scene {
 
         this.events.once('shutdown', () => {
             EventBus.off(ChessEvents.gameOver, handleGameOver);
+            EventBus.off(ChessEvents.enPassant, handleEnPassant);
             unsubscribe();
         });
     }
@@ -394,7 +513,22 @@ export class Game extends Scene {
         this.currentLevel = Math.floor((SCREEN_DIMENSIONS[1] - this.player.y) / LEVEL_HEIGHT);
 
         if (this.currentLevel > this.maxLevel) {
+            const levelsGained = this.currentLevel - this.maxLevel;
+            const previousStageIndex = this.stage.index;
             this.maxLevel = this.currentLevel;
+
+            // Award points for each new level, then advance the combo.
+            for (let i = 0; i < levelsGained; i++) {
+                this.score += this.stage.pointsPerLevel * this.comboMultiplier;
+                this.cleanLevelStreak += 1;
+                this.advanceCombo();
+            }
+
+            this.stage = stageForLevel(this.maxLevel);
+            if (this.stage.index > previousStageIndex) {
+                this.onStageCleared(previousStageIndex);
+            }
+
             for (let i = this.highestLevelGenerated + 1; i <= this.maxLevel + 10; i++) {
                 this.createLevel(i);
             }
@@ -402,10 +536,120 @@ export class Game extends Scene {
             this.highestLevelGenerated = this.maxLevel + 10;
         }
 
-        const currentScore = (10 * this.currentLevel).toString();
-        const maxScore = (10 * this.maxLevel).toString();
-        this.scoreValueText.setText(currentScore);
-        this.maxValueText.setText(maxScore);
+        this.updateHud();
+    }
+
+    /** Steps the multiplier up every LEVELS_PER_COMBO_STEP clean levels. */
+    private advanceCombo() {
+        const target = Math.min(
+            MAX_COMBO_MULTIPLIER,
+            1 + Math.floor(this.cleanLevelStreak / LEVELS_PER_COMBO_STEP)
+        );
+        if (target > this.comboMultiplier) {
+            this.comboMultiplier = target;
+            this.flashMessage(`COMBO x${this.comboMultiplier}`, '#ffb020');
+        }
+    }
+
+    /**
+     * Fired when the player crosses into a new stage. The reward deliberately
+     * pays out on the chess board rather than in the platformer: a piece lost to
+     * a spike comes back, so climbing well repairs a losing position.
+     */
+    private onStageCleared(previousStageIndex: number) {
+        this.stagesCleared += 1;
+
+        this.showStageBanner(this.stage);
+        this.stageValueText.setText(this.stage.name);
+        this.cameras.main.flash(320, 233, 216, 176, false);
+
+        // Stage reward: recover a piece knocked off by a spike.
+        EventBus.emit(ChessEvents.restorePiece, 'w');
+
+        // Clearing a stage without losing the streak is worth a lump bonus.
+        const bonus = previousStageIndex * 50 * this.comboMultiplier;
+        this.score += bonus;
+        this.time.delayedCall(600, () => this.flashMessage(`+${bonus} STAGE BONUS`, '#7dd3a0'));
+    }
+
+    /** Parchment-and-gold status bar, pinned to the top of the viewport. */
+    private buildHud() {
+        const centerX = this.scale.width / 2;
+        const hudY = 34;
+        const hudWidth = 430;
+        const hudHeight = 60;
+
+        this.add.rectangle(centerX, hudY, hudWidth + 12, hudHeight + 12, PALETTE.oak, 0.9)
+            .setStrokeStyle(2, PALETTE.gold, 0.7)
+            .setDepth(44)
+            .setScrollFactor(0);
+
+        this.hudBackground = this.add.rectangle(centerX, hudY, hudWidth, hudHeight, PALETTE.parchment, 0.92)
+            .setStrokeStyle(1, PALETTE.parchmentEdge, 0.8)
+            .setDepth(45)
+            .setScrollFactor(0);
+
+        const left = centerX - hudWidth / 2 + 18;
+
+        this.scoreLabel = this.add.text(left, hudY - 12, 'SCORE', {
+            fontFamily: FONT_BODY,
+            fontSize: '13px',
+            color: INK_SOFT
+        }).setOrigin(0, 0.5).setDepth(50).setScrollFactor(0);
+
+        this.scoreValueText = this.add.text(left, hudY + 10, '0', {
+            fontFamily: FONT_DISPLAY,
+            fontSize: '28px',
+            color: '#7b2230'
+        }).setOrigin(0, 0.5).setDepth(50).setScrollFactor(0);
+
+        // Divider between score and stage.
+        this.add.rectangle(left + 132, hudY, 1, hudHeight - 18, PALETTE.parchmentEdge, 0.7)
+            .setDepth(46)
+            .setScrollFactor(0);
+
+        const stageX = left + 152;
+
+        this.stageLabel = this.add.text(stageX, hudY - 16, 'STAGE', {
+            fontFamily: FONT_BODY,
+            fontSize: '13px',
+            color: INK_SOFT
+        }).setOrigin(0, 0.5).setDepth(50).setScrollFactor(0);
+
+        this.stageValueText = this.add.text(stageX, hudY + 3, this.stage.name, {
+            fontFamily: FONT_DISPLAY,
+            fontSize: '19px',
+            color: INK
+        }).setOrigin(0, 0.5).setDepth(50).setScrollFactor(0);
+
+        // Progress towards the next stage.
+        this.add.rectangle(stageX, hudY + 20, this.stageProgressWidth, 6, PALETTE.oak, 0.3)
+            .setOrigin(0, 0.5)
+            .setDepth(48)
+            .setScrollFactor(0);
+
+        this.stageProgressBar = this.add.rectangle(stageX, hudY + 20, 0, 6, PALETTE.gold, 1)
+            .setOrigin(0, 0.5)
+            .setDepth(49)
+            .setScrollFactor(0);
+
+        // Combo badge, sits just outside the plaque so it can pulse freely.
+        this.comboText = this.add.text(centerX + hudWidth / 2 + 26, hudY, '', {
+            fontFamily: FONT_DISPLAY,
+            fontSize: '26px',
+            color: GOLD_BRIGHT,
+            stroke: '#140d06',
+            strokeThickness: 4
+        }).setOrigin(0, 0.5).setDepth(50).setScrollFactor(0);
+    }
+
+    private updateHud() {
+        this.scoreValueText.setText(Math.round(this.score).toString());
+
+        const progress = 1 - levelsUntilNextStage(this.maxLevel) / LEVELS_PER_STAGE;
+        this.stageProgressBar.width = this.stageProgressWidth * Phaser.Math.Clamp(progress, 0, 1);
+
+        this.comboText.setText(this.comboMultiplier > 1 ? `x${this.comboMultiplier}` : '');
     }
 
     changeScene() {

@@ -10,8 +10,6 @@
     // TODOs:
     // - Implement Multiplayer (using websockets)
     // - Remove the phaser game scenes and implement the UI with sveltejs directly?
-    // - Change UI of chessboard to match the new platformer style
-    // - Change overall svelte ui to make Chess/Platformer side-by-side view more appealing
     // - Figure out hosting and deployment - sort out build issues
 </script>
 
@@ -50,3 +48,16 @@
 </script>
 
 <div id="game-container"></div>
+
+<style>
+    /* Phaser's RESIZE scale mode sizes the canvas to this element. */
+    #game-container {
+        width: 100%;
+        height: 100vh;
+        overflow: hidden;
+    }
+
+    #game-container :global(canvas) {
+        display: block;
+    }
+</style>

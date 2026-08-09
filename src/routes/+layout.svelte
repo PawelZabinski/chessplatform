@@ -1,16 +1,29 @@
 <svelte:head>
-    <title>Phaser Svelte Template</title>
+    <title>ChessPlatform — climb by playing chess</title>
 </svelte:head>
 
 <slot />
 
 <style>
+    :global(:root) {
+        --oak: #3b2a1c;
+        --oak-light: #5a412c;
+        --gold: #c9a227;
+        --gold-bright: #f0d264;
+        --parchment: #e8d8b0;
+        --ink: #2b1f14;
+        --shadow: #0b0704;
+    }
+
     :global(body) {
-        background-color: #0cc9bd;
         margin: 0;
         padding: 0;
-        color: rgba(255, 255, 255, 0.87);
-        background-color: #000000;
-        font-family: Arial, Helvetica, sans-serif;
+        color: var(--parchment);
+        font-family: 'Cinzel', Georgia, 'Times New Roman', serif;
+        /* Dark stone hall: a warm pool of light in the centre, near-black edges. */
+        background:
+            radial-gradient(circle at 50% 32%, #241a12 0%, #140e09 45%, var(--shadow) 100%),
+            var(--shadow);
+        overflow: hidden;
     }
 </style>

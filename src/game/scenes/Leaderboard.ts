@@ -2,127 +2,147 @@ import { Scene } from 'phaser';
 import { EventBus } from '../EventBus';
 import { leaderboard } from '$lib/stores/chess';
 import { get } from 'svelte/store';
+import {
+    PALETTE,
+    INK,
+    INK_SOFT,
+    FONT_BODY,
+    FONT_DISPLAY,
+    bannerHeading,
+    caption,
+    drawBackdrop,
+    ornateButton,
+    parchmentPanel
+} from '../theme';
+
+const MAX_ROWS = 8;
+const ROW_HEIGHT = 46;
+
+const DIFFICULTY_COLOR: Record<string, string> = {
+    Novice: '#2f6b34',
+    Intermediate: '#2a4a80',
+    Expert: '#8a2230'
+};
+
+/** Medal tints for the top three places. */
+const RANK_COLOR = ['#a8801f', '#6f6f78', '#8a5a2b'];
 
 export class Leaderboard extends Scene {
-    private background!: Phaser.GameObjects.Image;
-
     constructor() {
         super('Leaderboard');
     }
 
     create() {
-        // background
-        const bgKey = this.textures.exists('background') ? 'background' : 'sky';
-        const bgSource = this.textures.get(bgKey).getSourceImage() as HTMLImageElement;
-        const bgScale = Math.max(
-            1,
-            Math.ceil(
-                Math.max(
-                    this.scale.width / bgSource.width,
-                    this.scale.height / bgSource.height
-                )
-            )
-        );
-        const bgWidth = bgSource.width * bgScale;
-        const bgHeight = bgSource.height * bgScale;
-        const bgOffsetX = (this.scale.width - bgWidth) / 2;
-        const bgOffsetY = (this.scale.height - bgHeight) / 2;
+        const centerX = this.scale.width / 2;
+        drawBackdrop(this);
 
-        this.background = this.add.image(bgOffsetX, bgOffsetY, bgKey)
-            .setOrigin(0, 0)
-            .setScale(bgScale)
-            .setAlpha(0.5);
+        bannerHeading(this, centerX, 96, 'Hall of Champions', 50);
 
-        // title
-        this.add.text(this.scale.width / 2, 80, 'Leaderboard', {
-            fontFamily: 'Arial Black',
-            fontSize: 48,
-            color: '#ffffff',
-            stroke: '#000000',
-            strokeThickness: 8
-        }).setOrigin(0.5);
+        const scores = get(leaderboard)
+            .slice()
+            .sort((a, b) => b.score - a.score)
+            .slice(0, MAX_ROWS);
 
-		const scores = get(leaderboard).sort((a, b) => b.score - a.score);
+        const tableWidth = 860;
+        const headerHeight = 46;
+        const bodyHeight = Math.max(ROW_HEIGHT, scores.length * ROW_HEIGHT);
+        const panelHeight = headerHeight + bodyHeight + 28;
+        const panelY = 200 + panelHeight / 2;
 
-        // table layout
-        const tableX = this.scale.width / 2;
-        const tableY = 160;
-        const tableWidth = 700;
-        const rowHeight = 60;
-        const numRows = scores.length + 1; // header + data
+        parchmentPanel(this, centerX, panelY, tableWidth, panelHeight);
 
-        // draw table background rectangle
-        const tableHeight = rowHeight * numRows + 20;
-        const tableRect = this.add.rectangle(tableX, tableY + tableHeight / 2, tableWidth, tableHeight, 0x000000, 0.5)
-            .setStrokeStyle(3, 0xffffff);
-
-        // header row
-        const headers = ['Player', 'Score', 'Difficulty'];
+        const top = panelY - panelHeight / 2;
         const columnX = [
-            tableX - tableWidth / 3,
-            tableX,
-            tableX + tableWidth / 3
+            centerX - tableWidth * 0.44, // rank
+            centerX - tableWidth * 0.34, // name
+            centerX - tableWidth * 0.02, // score
+            centerX + tableWidth * 0.16, // stage
+            centerX + tableWidth * 0.36 // difficulty
         ];
 
+        // Header
+        const headers = ['#', 'Champion', 'Score', 'Stage', 'Difficulty'];
+        const headerOrigins = [0, 0, 1, 0.5, 0.5];
         headers.forEach((header, i) => {
-            this.add.text(columnX[i], tableY + 30, header, {
-                fontFamily: 'Arial',
-                fontSize: '28px',
-                color: '#ffffaa',
-                fontStyle: 'bold'
-            }).setOrigin(0.5);
+            this.add
+                .text(columnX[i], top + 28, header, {
+                    fontFamily: FONT_DISPLAY,
+                    fontSize: '19px',
+                    color: INK
+                })
+                .setOrigin(headerOrigins[i], 0.5);
         });
 
-        // rows
+        this.add.rectangle(centerX, top + headerHeight + 2, tableWidth - 40, 1, PALETTE.parchmentEdge, 0.8);
+
+        if (scores.length === 0) {
+            this.add
+                .text(centerX, top + headerHeight + bodyHeight / 2, 'No champions yet. Be the first to climb.', {
+                    fontFamily: FONT_BODY,
+                    fontSize: '20px',
+                    color: INK_SOFT
+                })
+                .setOrigin(0.5);
+        }
+
         scores.forEach((entry, index) => {
-            const y = tableY + rowHeight * (index + 1.5);
+            const y = top + headerHeight + 14 + index * ROW_HEIGHT + ROW_HEIGHT / 2;
 
-            // alternating row background color
-            const rowBg = this.add.rectangle(tableX, y, tableWidth - 20, rowHeight - 10, index % 2 ? 0x111111 : 0x222222, 0.6)
-                .setStrokeStyle(1, 0x555555);
+            // Alternating banding, kept subtle so parchment still reads as paper.
+            if (index % 2 === 1) {
+                this.add.rectangle(centerX, y, tableWidth - 40, ROW_HEIGHT - 6, PALETTE.parchmentDark, 0.55);
+            }
 
-            // player name
-            this.add.text(columnX[0], y, entry.name, {
-                fontFamily: 'Arial',
-                fontSize: '26px',
-                color: '#ffffff'
-            }).setOrigin(0.5);
+            const rankColor = RANK_COLOR[index] ?? INK_SOFT;
+            this.add
+                .text(columnX[0], y, `${index + 1}`, {
+                    fontFamily: FONT_DISPLAY,
+                    fontSize: '22px',
+                    color: rankColor
+                })
+                .setOrigin(0, 0.5);
 
-            // score
-            this.add.text(columnX[1], y, entry.score.toString(), {
-                fontFamily: 'Arial',
-                fontSize: '26px',
-                color: '#ffffff'
-            }).setOrigin(0.5);
+            this.add
+                .text(columnX[1], y, entry.name, {
+                    fontFamily: FONT_BODY,
+                    fontSize: '22px',
+                    color: INK
+                })
+                .setOrigin(0, 0.5);
 
-			// difficulty
-            const diffColor =
-                entry.difficulty === 'Novice'
-                    ? '#24d124ff'
-                    : entry.difficulty === 'Intermediate'
-                    ? '#2c9ed6ff'
-                    : '#dc6565ff';
-            this.add.text(columnX[2], y, entry.difficulty, {
-                fontFamily: 'Arial',
-                fontSize: '26px',
-                color: diffColor
-            }).setOrigin(0.5);
+            this.add
+                .text(columnX[2], y, entry.score.toLocaleString(), {
+                    fontFamily: FONT_DISPLAY,
+                    fontSize: '24px',
+                    color: '#7b2230'
+                })
+                .setOrigin(1, 0.5);
+
+            // Entries saved before stages existed have no stage recorded.
+            this.add
+                .text(columnX[3], y, entry.stage ?? '—', {
+                    fontFamily: FONT_BODY,
+                    fontSize: '19px',
+                    color: INK_SOFT
+                })
+                .setOrigin(0.5);
+
+            this.add
+                .text(columnX[4], y, entry.difficulty, {
+                    fontFamily: FONT_BODY,
+                    fontSize: '19px',
+                    color: DIFFICULTY_COLOR[entry.difficulty] ?? INK_SOFT
+                })
+                .setOrigin(0.5);
         });
 
-        // back button
-        const backRect = this.add.rectangle(tableX, tableY + tableHeight + 70, 220, 60, 0x003366)
-            .setStrokeStyle(3, 0xffffff)
-            .setInteractive({ useHandCursor: true });
+        if (get(leaderboard).length > MAX_ROWS) {
+            caption(this, centerX, panelY + panelHeight / 2 + 26, `showing the top ${MAX_ROWS} of ${get(leaderboard).length}`, 15);
+        }
 
-        const backText = this.add.text(tableX, tableY + tableHeight + 70, 'Back to Menu', {
-            fontFamily: 'Arial',
-            fontSize: '28px',
-            color: '#ffffff'
-        }).setOrigin(0.5);
-
-        backRect.on('pointerover', () => backRect.setFillStyle(0x002244));
-        backRect.on('pointerout', () => backRect.setFillStyle(0x003366));
-        backRect.on('pointerdown', () => this.scene.start('StartMenu'));
+        ornateButton(this, centerX, panelY + panelHeight / 2 + 82, 'Return to Gate', () => {
+            this.scene.start('StartMenu');
+        }, { fill: PALETTE.crimson, fillHover: PALETTE.crimsonLight });
 
         EventBus.emit('current-scene-ready', this);
     }
