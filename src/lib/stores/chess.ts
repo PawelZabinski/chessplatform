@@ -138,9 +138,10 @@ export const chessState = createChessStateStore();
 export type LeaderboardEntry = {
 	name: string;
 	score: number;
-	difficulty: string;
 	/** Furthest stage reached. Absent on entries saved before stages existed. */
 	stage?: string;
+	/** Chess games won during the run. Absent on older entries. */
+	gamesWon?: number;
 };
 
 const LEADERBOARD_STORAGE_KEY = 'chessplatform-leaderboard';
@@ -167,14 +168,16 @@ function createLeaderboardStore() {
 				return [];
 			}
 
+			// Entries saved before difficulty was removed carry an extra field;
+			// it is simply ignored rather than invalidating the entry.
 			return parsed.filter(
 				(entry): entry is LeaderboardEntry =>
 					typeof entry === 'object' &&
 					entry !== null &&
 					typeof entry.name === 'string' &&
 					typeof entry.score === 'number' &&
-					typeof entry.difficulty === 'string' &&
-					(entry.stage === undefined || typeof entry.stage === 'string')
+					(entry.stage === undefined || typeof entry.stage === 'string') &&
+					(entry.gamesWon === undefined || typeof entry.gamesWon === 'number')
 			);
 		} catch (error) {
 			console.warn('Failed to read leaderboard from storage', error);

@@ -12,22 +12,25 @@ import {
 	MAX_COMBO_MULTIPLIER,
 	PLAYER_BOUNCE,
 	PLAYER_GRAVITY_Y,
-	PLAYER_MAX_VELOCITY,
-	STEER_PER_FILE
+	PLAYER_MAX_VELOCITY_X,
+	PLAYER_MAX_VELOCITY_Y,
+	STEER_PER_FILE,
+	VICTORY_FLING_VELOCITY
 } from '../config';
 import { LEVELS_PER_STAGE, levelsUntilNextStage, stageForLevel, type StageConfig } from '../stages';
-import { floorByNumber, type TowerFloor } from '../levels';
+import { engineForTier, tierFor, tierLabel } from '../difficulty';
+import { engineForFloor, floorByNumber, type TowerFloor } from '../levels';
 import { liftForMove, type LiftMove } from '../lift';
-import { Flood } from '../world/Flood';
+import { Lava } from '../world/Lava';
 import { PlatformField } from '../world/PlatformField';
-import { FONT_BODY, FONT_DISPLAY, GOLD_BRIGHT, INK, INK_SOFT, PALETTE } from '../theme';
+import { createAllTerrainTextures, skyKey, wallKey, SKYLINE_KEY, STAR_KEY } from '../world/textures';
+import { themeForStage, themeForWing, type TerrainTheme } from '../world/themes';
+import { FONT_BODY, FONT_DISPLAY, GOLD_BRIGHT, INK, INK_SOFT, PALETTE, PARCHMENT } from '../theme';
 
 export type GameMode = 'tower' | 'endless';
 
 export interface GameSceneData {
 	mode: GameMode;
-	/** Endless mode only. */
-	difficulty?: string;
 	/** Tower mode only. */
 	floor?: number;
 }
@@ -43,22 +46,39 @@ export interface RunOutcome {
 	stageName: string;
 	stagesCleared: number;
 	movesPlayed: number;
-	difficulty?: string;
+	/** Endless: chess games won before the run ended. */
+	gamesWon: number;
+	/** Endless: engine strength reached. */
+	tier: number;
 }
 
 export class Game extends Scene {
 	private mode: GameMode = 'endless';
 	private towerFloor?: TowerFloor;
-	private difficulty = 'Intermediate';
+
+	/** Endless: chess games won so far, and the engine tier that implies. */
+	private gamesWon = 0;
+	private tier = 1;
+	private totalMovesPlayed = 0;
 
 	private worldWidth = 1024;
 	private worldHeight = 768;
 
 	private field!: PlatformField;
-	private flood!: Flood;
+	private lava!: Lava;
+	private skyBackdrop!: Phaser.GameObjects.Image;
+	private skyFade!: Phaser.GameObjects.Image;
+	private starLayer!: Phaser.GameObjects.TileSprite;
+	private skyline!: Phaser.GameObjects.TileSprite;
+	private leftWall!: Phaser.GameObjects.TileSprite;
+	private rightWall!: Phaser.GameObjects.TileSprite;
+	private motes?: Phaser.GameObjects.Particles.ParticleEmitter;
+	private theme!: TerrainTheme;
 	private player!: Phaser.Physics.Arcade.Sprite;
 	private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
-	private wasd!: Record<'up' | 'left' | 'right' | 'jump', Phaser.Input.Keyboard.Key>;
+	private wasd!: Record<'up' | 'left' | 'right' | 'down' | 'jump', Phaser.Input.Keyboard.Key>;
+	/** Scene time until which the player falls through pass-through platforms. */
+	private dropThroughUntil = 0;
 
 	private currentLevel = 0;
 	private maxLevel = 0;
@@ -79,11 +99,15 @@ export class Game extends Scene {
 	private stageValueText!: Phaser.GameObjects.Text;
 	private stageProgressBar!: Phaser.GameObjects.Rectangle;
 	private comboText!: Phaser.GameObjects.Text;
+	private gamesWonText?: Phaser.GameObjects.Text;
+	private tierText?: Phaser.GameObjects.Text;
 	private controlBar!: Phaser.GameObjects.Rectangle;
 	private controlBarBg!: Phaser.GameObjects.Rectangle;
 	private controlLabel!: Phaser.GameObjects.Text;
 	private readonly stageProgressWidth = 240;
 	private readonly controlBarWidth = 150;
+	/** Y below which transient overlays may draw without hitting the HUD. */
+	private hudBottom = 140;
 
 	constructor() {
 		super('Game');
@@ -91,14 +115,11 @@ export class Game extends Scene {
 
 	init(data: GameSceneData) {
 		this.mode = data.mode ?? 'endless';
-		this.difficulty = data.difficulty ?? 'Intermediate';
 		this.towerFloor = data.floor ? floorByNumber(data.floor) : undefined;
 	}
 
 	preload() {
-		this.load.image('sky', 'assets/sky.png');
-		this.load.image('ground', 'assets/Ground.png');
-		this.load.image('platform', 'assets/Platform.png');
+		// Only the authored sprites are loaded; terrain and sky are drawn in code.
 		this.load.spritesheet('spike', 'assets/Spike.png', { frameWidth: 54, frameHeight: 52 });
 		this.load.spritesheet('ninjaIdle', 'assets/IdleNinja.png', { frameWidth: 32, frameHeight: 32 });
 		this.load.spritesheet('ninjaRun', 'assets/RunNinja.png', { frameWidth: 32, frameHeight: 32 });
@@ -114,6 +135,7 @@ export class Game extends Scene {
 		this.worldHeight = this.scale.height;
 
 		this.resetRunState();
+		this.theme = this.themeForLevel(0);
 		this.createAnimations();
 		this.drawSky();
 
@@ -121,17 +143,18 @@ export class Game extends Scene {
 			this,
 			this.worldWidth,
 			this.worldHeight,
-			this.towerFloor?.rules ?? {}
+			this.towerFloor?.rules ?? {},
+			(level) => this.themeForLevel(level)
 		);
 		for (let i = 1; i <= 10; i++) this.field.buildLevel(i);
 		this.highestLevelGenerated = 10;
 
 		this.createPlayer();
-		this.flood = new Flood(
+		this.lava = new Lava(
 			this,
 			this.worldWidth,
 			this.worldHeight,
-			this.towerFloor ? this.towerFloor.floodSpeed : 10
+			this.towerFloor ? this.towerFloor.lavaSpeed : 10
 		);
 
 		this.createInput();
@@ -139,6 +162,8 @@ export class Game extends Scene {
 
 		if (this.towerFloor) {
 			this.startTowerFloor(this.towerFloor);
+		} else {
+			this.startEndlessRun();
 		}
 
 		this.bindChessEvents();
@@ -153,16 +178,42 @@ export class Game extends Scene {
 		this.currentAnimKey = null;
 		this.runEnded = false;
 		this.controlUntil = 0;
+		this.dropThroughUntil = 0;
 		this.stage = stageForLevel(0);
 		this.score = 0;
 		this.cleanLevelStreak = 0;
 		this.comboMultiplier = 1;
 		this.stagesCleared = 0;
+		this.gamesWon = 0;
+		this.tier = 1;
+		this.totalMovesPlayed = 0;
+	}
+
+	/** Endless starts at the gentlest engine tier and sharpens as you climb. */
+	private startEndlessRun() {
+		this.tier = tierFor(this.stage.index, this.gamesWon);
+		EventBus.emit(ChessEvents.loadPosition, { engine: engineForTier(this.tier) });
+	}
+
+	/**
+	 * Endless difficulty tracks both altitude and games won, so it is re-evaluated
+	 * whenever either changes. Only the engine is reconfigured — the position in
+	 * progress is left alone.
+	 */
+	private refreshEndlessTier() {
+		if (this.mode !== 'endless') return;
+
+		const next = tierFor(this.stage.index, this.gamesWon);
+		if (next === this.tier) return;
+
+		this.tier = next;
+		EventBus.emit(ChessEvents.configureEngine, engineForTier(this.tier));
+		this.flashMessage(`THE ENGINE SHARPENS — ${tierLabel(this.tier).toUpperCase()}`, '#c9a7f0');
 	}
 
 	/** Loads the floor's position and engine strength, then announces it. */
 	private startTowerFloor(floor: TowerFloor) {
-		EventBus.emit(ChessEvents.loadPosition, { fen: floor.fen, engine: floor.engine });
+		EventBus.emit(ChessEvents.loadPosition, { fen: floor.fen, engine: engineForFloor(floor) });
 
 		this.showBanner(`FLOOR ${floor.floor}`, floor.name, GOLD_BRIGHT);
 
@@ -171,29 +222,140 @@ export class Game extends Scene {
 		}
 	}
 
-	private drawSky() {
-		const source = this.textures.get('sky').getSourceImage() as HTMLImageElement;
-		const scale = Math.max(
-			1,
-			Math.ceil(Math.max(this.worldWidth / source.width, this.worldHeight / source.height))
-		);
-		const tileWidth = source.width * scale;
-		const tileHeight = source.height * scale;
-		const columns = Math.ceil(this.worldWidth / tileWidth) + 1;
+	/**
+	 * Which stone a given altitude band is built from. The Tower uses its wing's
+	 * theme throughout; Endless cycles themes with the stages, so a long run keeps
+	 * changing character and the boundaries show as seams in the masonry.
+	 */
+	private themeForLevel(level: number): TerrainTheme {
+		if (this.towerFloor) return themeForWing(this.towerFloor.wing);
+		return themeForStage(stageForLevel(level).index);
+	}
 
-		// Alternating flipped tiles, repeated far enough up to cover any climb.
-		let y = 0;
-		for (let row = 0; row < 400; row++) {
-			for (let col = 0; col < columns; col++) {
-				this.add
-					.image(col * tileWidth, y, 'sky')
-					.setOrigin(0, 0)
-					.setScale(scale).flipY = row % 2 === 0;
-			}
-			y -= (tileHeight * 14) / 15;
+	/**
+	 * Backdrop: themed gradient, star and skyline parallax, and the tower's own
+	 * side walls. The walls are what make the climb read as the inside of a
+	 * shaft rather than open sky.
+	 *
+	 * `skyFade` sits over `skyBackdrop` and is cross-faded when the theme
+	 * changes, so Endless slides between sections instead of cutting.
+	 */
+	private drawSky() {
+		createAllTerrainTextures(this);
+
+		const sky = skyKey(this.theme);
+		this.skyBackdrop = this.add
+			.image(0, 0, sky)
+			.setOrigin(0, 0)
+			.setDisplaySize(this.worldWidth, this.worldHeight)
+			.setScrollFactor(0)
+			.setDepth(-30);
+		this.skyFade = this.add
+			.image(0, 0, sky)
+			.setOrigin(0, 0)
+			.setDisplaySize(this.worldWidth, this.worldHeight)
+			.setScrollFactor(0)
+			.setDepth(-29)
+			.setAlpha(0);
+
+		this.starLayer = this.add
+			.tileSprite(0, 0, this.worldWidth, this.worldHeight, STAR_KEY)
+			.setOrigin(0, 0)
+			.setScrollFactor(0)
+			.setDepth(-28)
+			.setAlpha(0);
+
+		this.skyline = this.add
+			.tileSprite(0, this.worldHeight - 210, this.worldWidth, 180, SKYLINE_KEY)
+			.setOrigin(0, 0)
+			.setScrollFactor(0)
+			.setDepth(-27)
+			.setAlpha(0.75);
+
+		// Side walls of the shaft. Their tile offset follows the camera, so the
+		// masonry streams past as the player climbs.
+		const wall = wallKey(this.theme);
+		const wallWidth = 96;
+		this.leftWall = this.add
+			.tileSprite(0, 0, wallWidth, this.worldHeight, wall)
+			.setOrigin(0, 0)
+			.setScrollFactor(0)
+			.setDepth(-20);
+		this.rightWall = this.add
+			.tileSprite(this.worldWidth - wallWidth, 0, wallWidth, this.worldHeight, wall)
+			.setOrigin(0, 0)
+			.setScrollFactor(0)
+			.setDepth(-20)
+			.setFlipX(true);
+
+		// Slow drift of dust or embers, tinted per theme.
+		if (this.textures.exists('mote')) {
+			this.motes = this.add.particles(0, 0, 'mote', {
+				x: { min: 0, max: this.worldWidth },
+				y: { min: 0, max: this.worldHeight },
+				lifespan: 6000,
+				speedY: { min: -26, max: -8 },
+				speedX: { min: -12, max: 12 },
+				scale: { start: 0.9, end: 0 },
+				alpha: { start: 0.5, end: 0 },
+				frequency: 260,
+				quantity: 1,
+				blendMode: 'ADD'
+			});
+			this.motes.setScrollFactor(0).setDepth(-15);
+			this.motes.setParticleTint(
+				Phaser.Display.Color.HexStringToColor(this.theme.mote).color
+			);
 		}
 	}
 
+	/** Parallax, altitude tinting, and the cross-fade between themes. */
+	private updateSky() {
+		const scrollY = this.cameras.main.scrollY;
+
+		this.starLayer.tilePositionY = scrollY * 0.12;
+		this.skyline.tilePositionX = scrollY * 0.02;
+		// Walls scroll close to 1:1 so the shaft feels solid around the player.
+		this.leftWall.tilePositionY = scrollY * 0.85;
+		this.rightWall.tilePositionY = scrollY * 0.85;
+
+		const altitude = Phaser.Math.Clamp(this.maxLevel / 45, 0, 1);
+		this.starLayer.setAlpha(Math.max(this.theme.starAlpha, altitude));
+		this.skyline.setAlpha(0.75 * (1 - altitude));
+		this.skyline.y = this.worldHeight - 210 + Math.max(0, scrollY * 0.04);
+	}
+
+	/**
+	 * Swaps the terrain theme when Endless enters a new stage. The sky and walls
+	 * cross-fade; already-generated bands keep the stone they were built from.
+	 */
+	private applyTheme(next: TerrainTheme) {
+		if (next.id === this.theme.id) return;
+		this.theme = next;
+
+		this.skyFade.setTexture(skyKey(next)).setAlpha(0);
+		this.tweens.add({
+			targets: this.skyFade,
+			alpha: 1,
+			duration: 1200,
+			onComplete: () => {
+				this.skyBackdrop.setTexture(skyKey(next));
+				this.skyFade.setAlpha(0);
+			}
+		});
+
+		[this.leftWall, this.rightWall].forEach((wall) => {
+			this.tweens.add({
+				targets: wall,
+				alpha: 0,
+				duration: 500,
+				yoyo: true,
+				onYoyo: () => wall.setTexture(wallKey(next))
+			});
+		});
+
+		this.motes?.setParticleTint(Phaser.Display.Color.HexStringToColor(next.mote).color);
+	}
 	private createAnimations() {
 		const define = (key: string, texture: string, end: number, frameRate: number) => {
 			if (this.anims.exists(key)) return;
@@ -222,7 +384,7 @@ export class Game extends Scene {
 		this.player.setDisplaySize(64, 64);
 		this.player.setBounce(PLAYER_BOUNCE);
 		this.player.body.setGravityY(PLAYER_GRAVITY_Y);
-		this.player.body.setMaxVelocity(PLAYER_MAX_VELOCITY);
+		this.player.body.setMaxVelocity(PLAYER_MAX_VELOCITY_X, PLAYER_MAX_VELOCITY_Y);
 		this.player.setCollideWorldBounds(true);
 		this.player.body.setSize(20, 28);
 		this.player.body.setOffset(6, 4);
@@ -241,8 +403,14 @@ export class Game extends Scene {
 			(player, platform) => {
 				const p = player as Phaser.Types.Physics.Arcade.SpriteWithDynamicBody;
 				const plat = platform as Phaser.Physics.Arcade.Image;
+
+				// Stone is solid from every direction, including to a drop-through.
 				if (plat.getData('blocked') === true) return true;
-				// Pass-through: only land when falling onto the top face.
+
+				// Holding down drops the player through wooden planks only.
+				if (this.time.now < this.dropThroughUntil) return false;
+
+				// Otherwise pass-through: only land when falling onto the top face.
 				return p.body.velocity.y >= 0 && p.body.bottom <= plat.body.top + 10;
 			},
 			this
@@ -259,13 +427,46 @@ export class Game extends Scene {
 			up: this.input.keyboard!.addKey(Key.W),
 			left: this.input.keyboard!.addKey(Key.A),
 			right: this.input.keyboard!.addKey(Key.D),
+			down: this.input.keyboard!.addKey(Key.S),
 			jump: this.input.keyboard!.addKey(Key.SPACE)
 		};
 	}
 
+	/**
+	 * Down or S drops the player through a wooden plank. Unlike jumping this is
+	 * not gated behind a control rune: it only ever moves you downward, toward
+	 * the lava, so it is a corrective move rather than a climbing advantage.
+	 */
+	private updateDropThrough() {
+		const pressed =
+			Phaser.Input.Keyboard.JustDown(this.cursors.down) ||
+			Phaser.Input.Keyboard.JustDown(this.wasd.down);
+		if (!pressed) return;
+
+		const onGround = this.player.body.blocked.down || this.player.body.touching.down;
+		if (!onGround) return;
+
+		this.dropThroughUntil = this.time.now + 260;
+		// A small nudge so the player actually separates from the platform.
+		this.player.setVelocityY(Math.max(this.player.body.velocity.y, 70));
+	}
+
 	private bindChessEvents() {
 		const onGameOver = (detail: { reason: string; result: number }) => {
-			this.endRun(detail.reason, detail.result);
+			// A tower floor is a single position, so any result ends it.
+			if (this.mode === 'tower') {
+				this.endRun(detail.reason, detail.result);
+				return;
+			}
+
+			// Endless only ends on a loss (or the End Run button). Winning flings
+			// you skyward and deals a fresh game immediately.
+			if (detail.result === 0) {
+				this.endRun(detail.reason, 0);
+				return;
+			}
+
+			this.onEndlessGameFinished(detail.result === 1);
 		};
 		const onEnPassant = () => {
 			const cleared = this.field.clearVisibleSpikes(this.cameras.main);
@@ -317,6 +518,34 @@ export class Game extends Scene {
 		}
 	}
 
+	/**
+	 * A chess game finished in Endless without losing. Winning launches the
+	 * climber far up the tower and pays a bonus; a draw just resets the board.
+	 * Either way a new game is dealt straight away and the run continues.
+	 */
+	private onEndlessGameFinished(won: boolean) {
+		this.totalMovesPlayed += chessState.moveCount();
+
+		if (won) {
+			this.gamesWon += 1;
+
+			this.player.setVelocityY(VICTORY_FLING_VELOCITY);
+			this.triggerDoubleJump();
+			this.cameras.main.flash(500, 255, 240, 190, false);
+			this.showBanner('CHECKMATE', `Game ${this.gamesWon} won`, GOLD_BRIGHT);
+
+			const bonus = 500 * this.gamesWon;
+			this.score += bonus;
+			this.time.delayedCall(700, () => this.flashMessage(`+${bonus} VICTORY BONUS`, '#7dd3a0'));
+		} else {
+			this.showBanner('DRAWN', 'A new game is dealt', '#c9a7f0');
+		}
+
+		this.tier = tierFor(this.stage.index, this.gamesWon);
+		// Fresh standard position at the run's current engine strength.
+		EventBus.emit(ChessEvents.loadPosition, { engine: engineForTier(this.tier) });
+	}
+
 	private onSpikeHit(_player: unknown, spike: unknown) {
 		(spike as Phaser.Physics.Arcade.Sprite).destroy();
 		EventBus.emit(ChessEvents.removePiece, 'w');
@@ -358,13 +587,15 @@ export class Game extends Scene {
 		const onGround = this.player.body.blocked.down || this.player.body.touching.down;
 		if (onGround) this.hasDoubleJumped = false;
 
+		this.updateDropThrough();
 		this.updateDirectControl(onGround);
 		this.updateAnimation(onGround);
 		this.updateClimb();
+		this.updateSky();
 
-		if (this.flood.update(delta, this.player.y)) {
+		if (this.lava.update(delta, this.player.y)) {
 			this.cameras.main.shake(400, 0.01);
-			this.endRun('The flood took you.', 0);
+			this.endRun('The lava took you.', 0);
 			return;
 		}
 
@@ -446,6 +677,8 @@ export class Game extends Scene {
 		this.stage = stageForLevel(this.maxLevel);
 		if (this.stage.index > previousStage) {
 			this.onStageCleared(previousStage);
+			this.refreshEndlessTier();
+			this.applyTheme(this.themeForLevel(this.maxLevel));
 		}
 
 		for (let i = this.highestLevelGenerated + 1; i <= this.maxLevel + 10; i++) {
@@ -487,17 +720,22 @@ export class Game extends Scene {
 		if (this.runEnded) return;
 		this.runEnded = true;
 
+		// Tower floors double the score for a win; endless already paid a bonus
+		// per game won, so its score stands as accumulated.
+		const score =
+			this.mode === 'tower' && result === 1 ? Math.round(this.score * 2) : Math.round(this.score);
+
 		const outcome: RunOutcome = {
 			mode: this.mode,
 			floor: this.towerFloor?.floor,
 			result,
 			reason,
-			// Winning the chess game doubles the climb score.
-			score: Math.round(result === 1 ? this.score * 2 : this.score),
+			score,
 			stageName: this.stage.name,
 			stagesCleared: this.stagesCleared,
-			movesPlayed: chessState.moveCount(),
-			difficulty: this.difficulty
+			movesPlayed: this.totalMovesPlayed + chessState.moveCount(),
+			gamesWon: this.gamesWon,
+			tier: this.tier
 		};
 
 		this.scene.start('GameOver', outcome);
@@ -517,74 +755,131 @@ export class Game extends Scene {
 
 	// ── HUD ────────────────────────────────────────────────────────────────
 
+	// ── HUD ────────────────────────────────────────────────────────────────
+	//
+	// Laid out as a single top bar divided into fixed cells with generous
+	// padding, rather than text placed at hand-picked offsets. Cell boundaries
+	// are computed from the bar, so nothing can drift into anything else, and
+	// the two transient readouts (combo, control timer) sit on their own row
+	// underneath instead of hanging off the sides.
+
 	private buildHud() {
-		const centerX = this.worldWidth / 2;
-		const hudY = 34;
-		const hudWidth = 430;
-		const hudHeight = 60;
+		const margin = 22;
+		const barX = margin;
+		const barY = 16;
+		const barWidth = this.worldWidth - margin * 2;
+		const barHeight = 78;
+		const pad = 22;
 
 		this.add
-			.rectangle(centerX, hudY, hudWidth + 12, hudHeight + 12, PALETTE.oak, 0.9)
-			.setStrokeStyle(2, PALETTE.gold, 0.7)
+			.rectangle(barX, barY, barWidth, barHeight, PALETTE.oak, 0.92)
+			.setOrigin(0, 0)
+			.setStrokeStyle(2, PALETTE.gold, 0.75)
 			.setDepth(44)
 			.setScrollFactor(0);
 		this.add
-			.rectangle(centerX, hudY, hudWidth, hudHeight, PALETTE.parchment, 0.92)
-			.setStrokeStyle(1, PALETTE.parchmentEdge, 0.8)
+			.rectangle(barX + 5, barY + 5, barWidth - 10, barHeight - 10, PALETTE.parchment, 0.93)
+			.setOrigin(0, 0)
+			.setStrokeStyle(1, PALETTE.parchmentEdge, 0.7)
 			.setDepth(45)
 			.setScrollFactor(0);
 
-		const left = centerX - hudWidth / 2 + 18;
-		const label = (x: number, y: number, text: string) =>
+		const innerLeft = barX + pad;
+		const innerRight = barX + barWidth - pad;
+		const midY = barY + barHeight / 2;
+
+		const smallLabel = (x: number, y: number, text: string, origin = 0) =>
 			this.add
-				.text(x, y, text, { fontFamily: FONT_BODY, fontSize: '13px', color: INK_SOFT })
-				.setOrigin(0, 0.5)
+				.text(x, y, text, {
+					fontFamily: FONT_BODY,
+					fontSize: '13px',
+					color: INK_SOFT
+				})
+				.setOrigin(origin, 0.5)
 				.setDepth(50)
 				.setScrollFactor(0);
 
-		label(left, hudY - 12, 'SCORE');
+		// Cell 1 — score.
+		smallLabel(innerLeft, midY - 16, 'SCORE');
 		this.scoreValueText = this.add
-			.text(left, hudY + 10, '0', {
+			.text(innerLeft, midY + 12, '0', {
 				fontFamily: FONT_DISPLAY,
-				fontSize: '28px',
+				fontSize: '30px',
 				color: '#7b2230'
 			})
 			.setOrigin(0, 0.5)
 			.setDepth(50)
 			.setScrollFactor(0);
 
-		this.add
-			.rectangle(left + 132, hudY, 1, hudHeight - 18, PALETTE.parchmentEdge, 0.7)
-			.setDepth(46)
-			.setScrollFactor(0);
+		const divider = (x: number) =>
+			this.add
+				.rectangle(x, midY, 1, barHeight - 30, PALETTE.parchmentEdge, 0.7)
+				.setDepth(46)
+				.setScrollFactor(0);
 
-		const stageX = left + 152;
-		// In the tower the right-hand slot shows the floor; endless shows the stage.
-		label(stageX, hudY - 16, this.towerFloor ? 'FLOOR' : 'STAGE');
+		// Cell 2 — floor or stage, with its progress bar.
+		const cell2 = innerLeft + 190;
+		divider(cell2 - 26);
+
+		smallLabel(cell2, midY - 20, this.towerFloor ? 'FLOOR' : 'STAGE');
 		this.stageValueText = this.add
 			.text(
-				stageX,
-				hudY + 3,
+				cell2,
+				midY + 2,
 				this.towerFloor ? `${this.towerFloor.floor} · ${this.towerFloor.name}` : this.stage.name,
-				{ fontFamily: FONT_DISPLAY, fontSize: '19px', color: INK }
+				{ fontFamily: FONT_DISPLAY, fontSize: '20px', color: INK }
 			)
 			.setOrigin(0, 0.5)
 			.setDepth(50)
 			.setScrollFactor(0);
 
 		this.add
-			.rectangle(stageX, hudY + 20, this.stageProgressWidth, 6, PALETTE.oak, 0.3)
+			.rectangle(cell2, midY + 24, this.stageProgressWidth, 7, PALETTE.oak, 0.3)
 			.setOrigin(0, 0.5)
 			.setDepth(48)
 			.setScrollFactor(0);
 		this.stageProgressBar = this.add
-			.rectangle(stageX, hudY + 20, 0, 6, PALETTE.gold, 1)
+			.rectangle(cell2, midY + 24, 0, 7, PALETTE.gold, 1)
 			.setOrigin(0, 0.5)
 			.setDepth(49)
 			.setScrollFactor(0);
 
+		// Cell 3 — right-aligned run state, kept clear of the End Run button.
+		const endRunWidth = this.mode === 'endless' ? 150 : 0;
+		const cell3Right = innerRight - endRunWidth;
+		if (endRunWidth > 0) divider(cell3Right + 18);
+
+		if (this.mode === 'endless') {
+			smallLabel(cell3Right, midY - 20, 'GAMES WON', 1);
+			this.gamesWonText = this.add
+				.text(cell3Right, midY + 3, '0', {
+					fontFamily: FONT_DISPLAY,
+					fontSize: '22px',
+					color: '#2f6b34'
+				})
+				.setOrigin(1, 0.5)
+				.setDepth(50)
+				.setScrollFactor(0);
+
+			this.tierText = this.add
+				.text(cell3Right, midY + 29, '', {
+					fontFamily: FONT_BODY,
+					fontSize: '13px',
+					color: '#5a4a7a'
+				})
+				.setOrigin(1, 0.5)
+				.setDepth(50)
+				.setScrollFactor(0);
+
+			this.buildEndRunButton(innerRight - endRunWidth / 2 + 6, midY);
+		}
+
+		// Transient row, below the bar. Combo on the left, control timer centred,
+		// so a long control label can never collide with the combo badge.
+		const belowY = barY + barHeight + 22;
+
 		this.comboText = this.add
-			.text(centerX + hudWidth / 2 + 26, hudY, '', {
+			.text(innerLeft, belowY, '', {
 				fontFamily: FONT_DISPLAY,
 				fontSize: '26px',
 				color: GOLD_BRIGHT,
@@ -595,11 +890,11 @@ export class Game extends Scene {
 			.setDepth(50)
 			.setScrollFactor(0);
 
-		const controlY = hudY + hudHeight / 2 + 22;
+		const centreX = this.worldWidth / 2;
 		this.controlLabel = this.add
-			.text(centerX, controlY - 12, 'CONTROL', {
+			.text(centreX, belowY - 11, 'CONTROL', {
 				fontFamily: FONT_BODY,
-				fontSize: '13px',
+				fontSize: '14px',
 				color: GOLD_BRIGHT,
 				stroke: '#140d06',
 				strokeThickness: 3
@@ -609,17 +904,17 @@ export class Game extends Scene {
 			.setScrollFactor(0)
 			.setVisible(false);
 		this.controlBarBg = this.add
-			.rectangle(centerX, controlY + 6, this.controlBarWidth + 4, 12, PALETTE.oak, 0.9)
+			.rectangle(centreX, belowY + 10, this.controlBarWidth + 6, 13, PALETTE.oak, 0.9)
 			.setStrokeStyle(1, PALETTE.gold, 0.8)
 			.setDepth(49)
 			.setScrollFactor(0)
 			.setVisible(false);
 		this.controlBar = this.add
 			.rectangle(
-				centerX - this.controlBarWidth / 2,
-				controlY + 6,
+				centreX - this.controlBarWidth / 2,
+				belowY + 10,
 				this.controlBarWidth,
-				8,
+				9,
 				PALETTE.goldBright,
 				1
 			)
@@ -627,6 +922,41 @@ export class Game extends Scene {
 			.setDepth(50)
 			.setScrollFactor(0)
 			.setVisible(false);
+
+		this.hudBottom = belowY + 24;
+	}
+
+	/** Endless has no natural end, so it needs an explicit way to bank a run. */
+	private buildEndRunButton(x: number, y: number) {
+		const container = this.add.container(x, y).setScrollFactor(0).setDepth(52);
+		const frame = this.add
+			.rectangle(0, 0, 128, 42, PALETTE.oak, 0.95)
+			.setStrokeStyle(2, PALETTE.gold, 0.8);
+		const face = this.add.rectangle(0, 0, 118, 32, PALETTE.crimson, 0.95);
+		const label = this.add
+			.text(0, 0, 'End Run', {
+				fontFamily: FONT_BODY,
+				fontSize: '17px',
+				color: PARCHMENT
+			})
+			.setOrigin(0.5);
+
+		container.add([frame, face, label]);
+		container.setSize(128, 42);
+		container.setInteractive({ useHandCursor: true });
+
+		container.on('pointerover', () => {
+			face.setFillStyle(PALETTE.crimsonLight, 1);
+			label.setColor(GOLD_BRIGHT);
+		});
+		container.on('pointerout', () => {
+			face.setFillStyle(PALETTE.crimson, 0.95);
+			label.setColor(PARCHMENT);
+		});
+		container.on('pointerdown', () => {
+			// Ending voluntarily is neither a win nor a loss; the score stands.
+			this.endRun('You left the climb of your own accord.', 0.5);
+		});
 	}
 
 	private updateHud() {
@@ -636,6 +966,9 @@ export class Game extends Scene {
 		this.stageProgressBar.width = this.stageProgressWidth * Phaser.Math.Clamp(progress, 0, 1);
 
 		this.comboText.setText(this.comboMultiplier > 1 ? `x${this.comboMultiplier}` : '');
+
+		this.gamesWonText?.setText(`${this.gamesWon}`);
+		this.tierText?.setText(tierLabel(this.tier));
 
 		const remaining = Math.max(0, this.controlUntil - this.time.now);
 		const show = remaining > 0;
@@ -649,16 +982,18 @@ export class Game extends Scene {
 		}
 	}
 
-	// ── Transient overlays ────────────────────────────────────────────────
-
 	private flashMessage(text: string, color: string) {
+		// Starts clear of the HUD and rises, so it never crosses the status bar.
+		const startY = this.hudBottom + 46;
 		const message = this.add
-			.text(this.worldWidth / 2, 120, text, {
+			.text(this.worldWidth / 2, startY, text, {
 				fontFamily: FONT_DISPLAY,
-				fontSize: '26px',
+				fontSize: '25px',
 				color,
 				stroke: '#140d06',
-				strokeThickness: 5
+				strokeThickness: 5,
+				align: 'center',
+				wordWrap: { width: this.worldWidth - 120 }
 			})
 			.setOrigin(0.5)
 			.setDepth(60)
@@ -666,9 +1001,9 @@ export class Game extends Scene {
 
 		this.tweens.add({
 			targets: message,
-			y: 92,
+			y: startY - 30,
 			alpha: 0,
-			duration: 1200,
+			duration: 1300,
 			ease: 'Cubic.easeOut',
 			onComplete: () => message.destroy()
 		});
@@ -680,11 +1015,11 @@ export class Game extends Scene {
 		const centerY = this.worldHeight / 2 - 60;
 
 		const parts: Phaser.GameObjects.GameObject[] = [
-			this.add.rectangle(centerX, centerY, this.worldWidth, 96, PALETTE.oak, 0.85).setDepth(58),
-			this.add.rectangle(centerX, centerY - 46, this.worldWidth, 2, PALETTE.gold, 0.9).setDepth(59),
-			this.add.rectangle(centerX, centerY + 46, this.worldWidth, 2, PALETTE.gold, 0.9).setDepth(59),
+			this.add.rectangle(centerX, centerY, this.worldWidth, 116, PALETTE.oak, 0.88).setDepth(58),
+			this.add.rectangle(centerX, centerY - 56, this.worldWidth, 2, PALETTE.gold, 0.9).setDepth(59),
+			this.add.rectangle(centerX, centerY + 56, this.worldWidth, 2, PALETTE.gold, 0.9).setDepth(59),
 			this.add
-				.text(centerX, centerY - 10, kicker, {
+				.text(centerX, centerY - 22, kicker, {
 					fontFamily: FONT_BODY,
 					fontSize: '16px',
 					color: '#e8d8b0'
@@ -692,7 +1027,7 @@ export class Game extends Scene {
 				.setOrigin(0.5)
 				.setDepth(60),
 			this.add
-				.text(centerX, centerY + 16, title, {
+				.text(centerX, centerY + 14, title, {
 					fontFamily: FONT_DISPLAY,
 					fontSize: '38px',
 					color: accent,
@@ -731,7 +1066,7 @@ export class Game extends Scene {
 		const y = this.worldHeight - 130;
 
 		const panel = this.add
-			.rectangle(centerX, y, 660, 74, PALETTE.parchment, 0.95)
+			.rectangle(centerX, y, 760, 92, PALETTE.parchment, 0.95)
 			.setStrokeStyle(2, PALETTE.gold, 0.9)
 			.setDepth(58)
 			.setScrollFactor(0);
@@ -741,7 +1076,8 @@ export class Game extends Scene {
 				fontSize: '19px',
 				color: INK,
 				align: 'center',
-				wordWrap: { width: 610 }
+				lineSpacing: 6,
+				wordWrap: { width: 690 }
 			})
 			.setOrigin(0.5)
 			.setDepth(59)

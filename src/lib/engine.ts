@@ -1,5 +1,4 @@
 import { Chess, type Move } from 'chess.js';
-import { EventBus, ChessEvents } from '../game/EventBus';
 
 type EngineState = 'uninitialised' | 'initialising' | 'waiting' | 'searching';
 
@@ -23,6 +22,8 @@ export class Engine {
 	private onBestMove?: UciCallback;
 	private externalUciCallback?: UciCallback;
 	private randomMoveProbability: number;
+	/** Stockfish Skill Level, 0 (weakest) to 20 (full strength). */
+	private skillLevel = 1;
 	private readonly handleUciMessage = (event: MessageEvent<string>) => {
 		this.onUci(event.data);
 	};
@@ -35,36 +36,35 @@ export class Engine {
 		this.color = options.color ?? 'b';
 		this.stockfishPath = options.stockfishPath ?? 'stockfish.js';
 		this.randomMoveProbability = options.randomMoveProbability ?? 0.5;
-
-		// Listen for difficulty selection events
-		EventBus.on(ChessEvents.selectDifficulty, (difficulty: string | string) => {
-			switch (difficulty) {
-				case "Novice": // Easy
-					this.randomMoveProbability = 0.8;
-					break;
-				case "Intermediate": // Normal
-					this.randomMoveProbability = 0.5;
-					break;
-				case "Expert": // Hard
-					this.randomMoveProbability = 0.1;
-					break;
-				default:
-					this.randomMoveProbability = 0.5;
-			}
-		});
 	}
 
 	/**
-	 * Applies a tower floor's engine settings. The ladder tunes strength per
-	 * floor, which is why the global difficulty selector belongs to endless mode
-	 * rather than to the tower.
+	 * Applies an engine strength. Tower floors set this once per floor; Endless
+	 * raises it as the run progresses. Skill Level has to move alongside depth —
+	 * a deep search pinned at Skill Level 1 still plays weakly.
 	 */
-	configure(settings: { randomMoveProbability?: number; depth?: number; moveTime?: number }): void {
+	configure(settings: {
+		randomMoveProbability?: number;
+		depth?: number;
+		moveTime?: number;
+		skillLevel?: number;
+	}): void {
 		if (settings.randomMoveProbability !== undefined) {
 			this.randomMoveProbability = settings.randomMoveProbability;
 		}
 		if (settings.depth !== undefined) this.depth = settings.depth;
 		if (settings.moveTime !== undefined) this.moveTime = settings.moveTime;
+		if (settings.skillLevel !== undefined) {
+			this.skillLevel = Math.min(20, Math.max(0, Math.round(settings.skillLevel)));
+			this.applySkillLevel();
+		}
+	}
+
+	private applySkillLevel(): void {
+		// Only meaningful once the worker exists; init() re-applies it otherwise.
+		if (!this.stockfish) return;
+		this.stockfish.postMessage('setoption name UCI_LimitStrength value false');
+		this.stockfish.postMessage(`setoption name Skill Level value ${this.skillLevel}`);
 	}
 
 	/** Initialise Stockfish. Resolve promise after receiving uciok. */
@@ -81,9 +81,7 @@ export class Engine {
 				}
 			};
 			this.stockfish.postMessage('uci');
-			this.stockfish.postMessage('setoption name Skill Level value 1');
-			this.stockfish.postMessage('setoption name UCI_LimitStrength value true');
-			this.stockfish.postMessage('setoption name UCI_Elo value 400');
+			this.applySkillLevel();
 		});
 	}
 

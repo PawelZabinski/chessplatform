@@ -1,6 +1,8 @@
 import { LEVEL_HEIGHT } from '../config';
 import { PALETTE } from '../theme';
-import { pickPlatformCount, runeChance, stageForLevel, type StageConfig } from '../stages';
+import { createAllTerrainTextures, groundKey, stoneKey, woodKey } from './textures';
+import { THEMES, type TerrainTheme } from './themes';
+import { pickPlatformCount, runeChance, stageForLevel } from '../stages';
 
 /** Hazard rates can be overridden per tower floor; endless mode uses the stage. */
 export interface FieldRules {
@@ -27,28 +29,36 @@ export class PlatformField {
 	private spikeHeight = 0;
 	private groundTileWidth = 0;
 
-	private readonly platformScale = 3.5;
-	private readonly groundScale = 2;
+	// Scales chosen so the drawn plank matches the original collision footprint
+	// (168 x ~18) — the art changed, the physics deliberately did not.
+	private readonly platformScale = 2;
+	private readonly groundScale = 1.6;
 	private readonly spikeScale = 0.3;
 
 	constructor(
 		private readonly scene: Phaser.Scene,
 		private readonly worldWidth: number,
 		private readonly worldHeight: number,
-		private readonly rules: FieldRules = {}
+		private readonly rules: FieldRules = {},
+		/** Which stone a given altitude band is built from. */
+		private readonly themeForLevel: (level: number) => TerrainTheme = () => THEMES.undercroft
 	) {
 		this.platforms = scene.physics.add.staticGroup();
 		this.spikes = scene.physics.add.group({ allowGravity: false, immovable: true });
 		this.runes = scene.physics.add.group({ allowGravity: false, immovable: true });
 
+		createAllTerrainTextures(scene);
 		this.measureTextures();
-		this.createSolidPlatformTexture();
 		this.createRuneTexture();
 		this.createGroundTiles();
 	}
 
 	private measureTextures() {
-		const platform = this.scene.textures.get('platform').getSourceImage() as HTMLImageElement;
+		// All themes share one geometry, so measuring any of them is enough.
+		const reference = THEMES.undercroft;
+		const platform = this.scene.textures
+			.get(woodKey(reference))
+			.getSourceImage() as HTMLImageElement;
 		this.platformHalfWidth = (platform.width * this.platformScale) / 2;
 		this.platformHeight = platform.height * this.platformScale;
 
@@ -56,38 +66,10 @@ export class PlatformField {
 		this.spikeHalfWidth = ((spikeFrame?.width ?? 0) * this.spikeScale) / 2;
 		this.spikeHeight = (spikeFrame?.height ?? 0) * this.spikeScale;
 
-		const ground = this.scene.textures.get('ground').getSourceImage() as HTMLImageElement;
+		const ground = this.scene.textures
+			.get(groundKey(reference))
+			.getSourceImage() as HTMLImageElement;
 		this.groundTileWidth = ground.width * this.groundScale;
-	}
-
-	/**
-	 * Solid platforms block from below; pass-through ones can be jumped up
-	 * through. They used to share a texture with a tint the Canvas renderer
-	 * ignores, so they were indistinguishable. Cold banded stone now reads as
-	 * solid against the original warm wood.
-	 *
-	 * Drawn at the source image's exact size so physics bodies are unchanged.
-	 */
-	private createSolidPlatformTexture() {
-		if (this.scene.textures.exists('platformSolid')) return;
-
-		const source = this.scene.textures.get('platform').getSourceImage() as HTMLImageElement;
-		const w = source.width;
-		const h = source.height;
-		const g = this.scene.make.graphics({ x: 0, y: 0 }, false);
-
-		g.fillStyle(0x5c6068, 1);
-		g.fillRect(0, 0, w, h);
-		g.fillStyle(0x9aa3ad, 1);
-		g.fillRect(0, 0, w, 1);
-		g.fillStyle(0x3a3e45, 1);
-		g.fillRect(0, h - 1, w, 1);
-
-		g.fillStyle(0x2f333a, 1);
-		[1, Math.floor(w / 2) - 1, w - 3].forEach((bx) => g.fillRect(bx, 1, 2, h - 2));
-
-		g.generateTexture('platformSolid', w, h);
-		g.destroy();
 	}
 
 	/** Rune texture is generated in code, so the powerup needs no new asset. */
@@ -128,7 +110,7 @@ export class PlatformField {
 			const ground = this.platforms.create(
 				x,
 				this.worldHeight - 45,
-				'ground'
+				groundKey(this.themeForLevel(0))
 			) as Phaser.Physics.Arcade.Image;
 			ground.setData('blocked', true);
 			ground.setScale(this.groundScale);
@@ -139,6 +121,7 @@ export class PlatformField {
 	/** Generates one band of platforms at the given altitude level. */
 	buildLevel(level: number) {
 		const stage = stageForLevel(level);
+		const theme = this.themeForLevel(level);
 		const spikeRate = this.rules.spikeChance ?? stage.spikeChance;
 		const runeRate = this.rules.runeChance ?? runeChance(stage);
 		const blockedRate = this.rules.blockedChance ?? stage.blockedChance;
@@ -160,7 +143,7 @@ export class PlatformField {
 			const platform = this.platforms.create(
 				x,
 				y,
-				isBlocked ? 'platformSolid' : 'platform'
+				isBlocked ? stoneKey(theme) : woodKey(theme)
 			) as Phaser.Physics.Arcade.Image;
 			platform.setScale(this.platformScale);
 			platform.refreshBody();

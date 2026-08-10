@@ -1,3 +1,6 @@
+import { createAllTerrainTextures, skyKey } from './world/textures';
+import { THEMES } from './world/themes';
+
 /**
  * Shared medieval UI kit.
  *
@@ -51,19 +54,17 @@ export const FONT_BODY = '"Cinzel", Georgia, "Times New Roman", serif';
  */
 export function drawBackdrop(scene: Phaser.Scene) {
 	const { width, height } = scene.scale;
-	const bgKey = scene.textures.exists('background') ? 'background' : 'sky';
+
+	// Menus share the in-game sky art rather than a placeholder tile.
+	createAllTerrainTextures(scene);
+	const bgKey = skyKey(THEMES.spire);
 
 	if (scene.textures.exists(bgKey)) {
-		const source = scene.textures.get(bgKey).getSourceImage() as HTMLImageElement;
-		const scale = Math.max(
-			1,
-			Math.ceil(Math.max(width / source.width, height / source.height))
-		);
 		scene.add
-			.image((width - source.width * scale) / 2, (height - source.height * scale) / 2, bgKey)
+			.image(0, 0, bgKey)
 			.setOrigin(0, 0)
-			.setScale(scale)
-			.setAlpha(0.35);
+			.setDisplaySize(width, height)
+			.setAlpha(0.9);
 	}
 
 	// Dark wash so parchment and gold stay legible over any sky tile.

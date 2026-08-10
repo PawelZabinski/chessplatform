@@ -14,34 +14,19 @@ import {
 	ornateButton
 } from '../theme';
 
-const DIFFICULTIES = ['Novice', 'Intermediate', 'Expert'] as const;
-
-const DIFFICULTY_BLURB: Record<string, string> = {
-	Novice: 'The engine blunders often. A gentle climb.',
-	Intermediate: 'The engine plays half its moves in earnest.',
-	Expert: 'The engine shows little mercy. Climb fast.'
-};
-
 /**
- * Two modes.
+ * Two modes, neither with a difficulty selector.
  *
- * The Tower is the main game: hand-tuned positions with per-floor engine
- * strength, which is why it has no difficulty selector. Endless keeps the
- * original score-attack loop, the difficulty picker and the leaderboard.
+ * The Tower tunes engine strength per floor. Endless starts gentle and sharpens
+ * as you climb and as you win games, so a run is its own difficulty curve.
  */
 export class StartMenu extends Scene {
-	private selectedDifficulty = 'Intermediate';
-	private difficultyButton!: ReturnType<typeof ornateButton>;
-	private blurb!: Phaser.GameObjects.Text;
-	private endlessOpen = false;
-
 	constructor() {
 		super('StartMenu');
 	}
 
 	create() {
 		const centerX = this.scale.width / 2;
-		this.endlessOpen = false;
 		drawBackdrop(this);
 
 		bannerHeading(this, centerX, 104, 'ChessPlatform', 56);
@@ -49,7 +34,7 @@ export class StartMenu extends Scene {
 			this,
 			centerX,
 			178,
-			'Your moves on the board are the climb. Captures launch you; stalling drowns you.',
+			'Your moves on the board are the climb. Captures launch you; stalling burns you.',
 			19
 		);
 
@@ -67,75 +52,35 @@ export class StartMenu extends Scene {
 
 		caption(this, centerX, 328, `${cleared} of ${TOTAL_FLOORS} floors cleared`, 15).setColor(GOLD);
 
-		ornateButton(this, centerX, 396, 'Endless Ascent', () => this.toggleEndless(), {
-			fill: PALETTE.royal,
-			fillHover: PALETTE.royalLight,
-			width: 400
-		});
+		ornateButton(
+			this,
+			centerX,
+			406,
+			'Endless Ascent',
+			() => {
+				EventBus.emit(ChessEvents.resetBoard);
+				this.scene.start('Game', { mode: 'endless' });
+			},
+			{ fill: PALETTE.royal, fillHover: PALETTE.royalLight, width: 400, fontSize: 27 }
+		);
 
-		ornateButton(this, centerX, 620, 'Hall of Champions', () => this.scene.start('Leaderboard'), {
+		caption(
+			this,
+			centerX,
+			456,
+			'Beat a game and you are flung skyward into the next. The engine sharpens as you climb; the run ends only when you lose.',
+			15
+		).setColor(GOLD);
+
+		ornateButton(this, centerX, 536, 'Hall of Champions', () => this.scene.start('Leaderboard'), {
 			fill: PALETTE.crimson,
 			fillHover: PALETTE.crimsonLight,
 			width: 400
 		});
 
-		this.buildEndlessPanel(centerX);
-		this.drawControlsPlaque(centerX, this.scale.height - 108);
+		this.drawControlsPlaque(centerX, this.scale.height - 116);
 
 		EventBus.emit('current-scene-ready', this);
-	}
-
-	/** Difficulty and the endless start live behind the Endless button. */
-	private buildEndlessPanel(centerX: number) {
-		let index = DIFFICULTIES.indexOf(this.selectedDifficulty as (typeof DIFFICULTIES)[number]);
-		if (index === -1) index = 1;
-
-		this.difficultyButton = ornateButton(
-			this,
-			centerX,
-			462,
-			`Difficulty  ·  ${DIFFICULTIES[index]}`,
-			() => {
-				index = (index + 1) % DIFFICULTIES.length;
-				this.selectedDifficulty = DIFFICULTIES[index];
-				this.difficultyButton.text.setText(`Difficulty  ·  ${this.selectedDifficulty}`);
-				this.blurb.setText(DIFFICULTY_BLURB[this.selectedDifficulty]);
-				EventBus.emit(ChessEvents.selectDifficulty, this.selectedDifficulty);
-			},
-			{ fill: PALETTE.royal, fillHover: PALETTE.royalLight, width: 340, height: 52, fontSize: 22 }
-		);
-
-		this.blurb = caption(this, centerX, 502, DIFFICULTY_BLURB[this.selectedDifficulty], 16);
-		this.blurb.setColor(GOLD);
-
-		const start = ornateButton(
-			this,
-			centerX,
-			552,
-			'Begin Endless Climb',
-			() => {
-				EventBus.emit(ChessEvents.resetBoard);
-				EventBus.emit(ChessEvents.selectDifficulty, this.selectedDifficulty);
-				this.scene.start('Game', { mode: 'endless', difficulty: this.selectedDifficulty });
-			},
-			{ width: 340, height: 52, fontSize: 22 }
-		);
-
-		this.endlessControls = [this.difficultyButton.container, this.blurb, start.container];
-		this.setEndlessVisible(false);
-	}
-
-	private endlessControls: Phaser.GameObjects.GameObject[] = [];
-
-	private setEndlessVisible(visible: boolean) {
-		this.endlessControls.forEach((control) =>
-			(control as Phaser.GameObjects.Components.Visible).setVisible(visible)
-		);
-	}
-
-	private toggleEndless() {
-		this.endlessOpen = !this.endlessOpen;
-		this.setEndlessVisible(this.endlessOpen);
 	}
 
 	private drawControlsPlaque(x: number, y: number) {
@@ -144,6 +89,7 @@ export class StartMenu extends Scene {
 		const lines = [
 			'captures lift you — the bigger the piece, the higher the leap',
 			'files steer left and right  ·  space brakes you to a stop',
+			'↓ or S drops you through a wooden plank — never through stone',
 			'gold runes grant 5s of ← → / A D control and jumps, stacking to 10s',
 			'wooden planks can be jumped through — grey stone cannot'
 		];

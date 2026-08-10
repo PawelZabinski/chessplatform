@@ -30,18 +30,18 @@
 		chessState.restoreFallenPiece(colour, (newFen) => chessboard?.load(newFen));
 	}
 
+	type EngineConfig = { randomMoveProbability?: number; depth?: number; moveTime?: number };
+
 	/**
-	 * Tower floors drop the player into an existing position with their own
-	 * engine strength, rather than a fresh game at a global difficulty.
+	 * Deals a position at a given engine strength. Tower floors pass their own
+	 * FEN; Endless omits it to start a fresh standard game at the run's current
+	 * difficulty tier.
 	 */
-	function loadPosition(detail: {
-		fen: string;
-		engine?: { randomMoveProbability?: number; depth?: number; moveTime?: number };
-	}): void {
+	function loadPosition(detail: { fen?: string; engine?: EngineConfig }): void {
 		if (detail?.engine) {
 			engine.configure(detail.engine);
 		}
-		chessState.reset((newFen) => chessboard?.load(newFen), detail.fen);
+		chessState.reset((newFen) => chessboard?.load(newFen), detail?.fen);
 	}
 
 	onMount(() => {
@@ -49,17 +49,20 @@
 		const restoreListener = (colour: Color) => restoreFallenPiece(colour);
 		const resetListener = () => chessState.reset((newFen) => chessboard?.load(newFen));
 		const loadListener = (detail: Parameters<typeof loadPosition>[0]) => loadPosition(detail);
+		const configureListener = (settings: EngineConfig) => engine.configure(settings);
 
 		EventBus.on(ChessEvents.removePiece, removeListener);
 		EventBus.on(ChessEvents.restorePiece, restoreListener);
 		EventBus.on(ChessEvents.resetBoard, resetListener);
 		EventBus.on(ChessEvents.loadPosition, loadListener);
+		EventBus.on(ChessEvents.configureEngine, configureListener);
 
 		return () => {
 			EventBus.off(ChessEvents.removePiece, removeListener);
 			EventBus.off(ChessEvents.restorePiece, restoreListener);
 			EventBus.off(ChessEvents.resetBoard, resetListener);
 			EventBus.off(ChessEvents.loadPosition, loadListener);
+			EventBus.off(ChessEvents.configureEngine, configureListener);
 		};
 	});
 </script>

@@ -3,6 +3,7 @@ import { leaderboard } from '$lib/stores/chess';
 import { towerProgress } from '$lib/stores/progress';
 import { ChessEvents, EventBus } from '../EventBus';
 import { TOTAL_FLOORS, floorByNumber } from '../levels';
+import { tierLabel } from '../difficulty';
 import type { RunOutcome } from './Game';
 import {
 	FONT_BODY,
@@ -118,11 +119,11 @@ export class GameOver extends Scene {
 
 		const detail =
 			this.outcome.mode === 'tower'
-				? `${this.outcome.movesPlayed} move${this.outcome.movesPlayed === 1 ? '' : 's'} played`
-				: `Reached ${this.outcome.stageName} · ${this.outcome.stagesCleared} stage${this.outcome.stagesCleared === 1 ? '' : 's'} cleared`;
+				? `${this.outcome.movesPlayed} move${this.outcome.movesPlayed === 1 ? '' : 's'} played${won ? '  ·  score doubled' : ''}`
+				: `${this.outcome.gamesWon} game${this.outcome.gamesWon === 1 ? '' : 's'} won  ·  reached ${this.outcome.stageName}  ·  engine ${tierLabel(this.outcome.tier).toLowerCase()}`;
 
 		this.add
-			.text(centerX, panelY + 90, won ? `${detail}  ·  score doubled` : detail, {
+			.text(centerX, panelY + 90, detail, {
 				fontFamily: FONT_BODY,
 				fontSize: 15,
 				color: cleared || won ? '#2f4a32' : INK_SOFT
@@ -201,7 +202,7 @@ export class GameOver extends Scene {
 
 	private restartEndless() {
 		EventBus.emit(ChessEvents.resetBoard);
-		this.scene.start('Game', { mode: 'endless', difficulty: this.outcome.difficulty });
+		this.scene.start('Game', { mode: 'endless' });
 	}
 
 	private toMenu() {
@@ -216,8 +217,8 @@ export class GameOver extends Scene {
 		leaderboard.add({
 			name: name ? name : 'Anonymous',
 			score: this.outcome.score,
-			difficulty: this.outcome.difficulty ?? 'Intermediate',
-			stage: this.outcome.stageName
+			stage: this.outcome.stageName,
+			gamesWon: this.outcome.gamesWon
 		});
 
 		this.hasSaved = true;

@@ -4,7 +4,7 @@
  * The original mapping used the move's rank delta, which meant a pointless pawn
  * shove out-climbed a strong rook move — the platformer was rewarding bad chess.
  * Lift now comes from what the move *achieves*, so playing well is what keeps
- * you above the flood.
+ * you above the lava.
  */
 
 export type PieceType = 'p' | 'n' | 'b' | 'r' | 'q' | 'k';
@@ -19,17 +19,33 @@ export const PIECE_VALUE: Record<PieceType, number> = {
 	k: 0
 };
 
-/** Every legal move gives at least this much, so you are never fully stuck. */
-export const BASE_LIFT = 170;
-/** Flat bonus on top of the value-scaled component for any capture. */
-const CAPTURE_BASE = 250;
-const CAPTURE_PER_VALUE = 70;
-const CHECK_BONUS = 190;
-const PROMOTION_BONUS = 300;
-const CASTLE_BONUS = 150;
+/**
+ * Tuning note: these are launch speeds in px/s, and what matters is the height
+ * they buy against gravity (550) relative to the 200px gap between platform
+ * bands. Height = v² / (2 * 550), so:
+ *
+ *   quiet move   450 -> ~184px  (~0.9 bands)
+ *   takes pawn   578 -> ~304px  (~1.5 bands)
+ *   takes knight 654 -> ~389px  (~1.9 bands)
+ *   takes rook   730 -> ~484px  (~2.4 bands)
+ *   takes queen  882 -> ~707px  (~3.5 bands)
+ *
+ * The base has to clear roughly one band on its own: most moves in a real game
+ * are quiet, and if those barely lift you then normal play cannot outrun the
+ * lava. Captures are the difference between climbing and climbing fast.
+ */
 
-/** Clamped below the body's max velocity so lift stays predictable. */
-export const MAX_LIFT = 850;
+/** Every legal move gives at least this much, so you are never fully stuck. */
+export const BASE_LIFT = 450;
+/** Flat bonus on top of the value-scaled component for any capture. */
+const CAPTURE_BASE = 90;
+const CAPTURE_PER_VALUE = 38;
+const CHECK_BONUS = 90;
+const PROMOTION_BONUS = 140;
+const CASTLE_BONUS = 70;
+
+/** Clamped below the body's max vertical velocity so lift stays predictable. */
+export const MAX_LIFT = 1000;
 
 export interface LiftMove {
 	/** Piece type captured, if any. */

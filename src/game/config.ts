@@ -5,8 +5,16 @@ export const LEVEL_HEIGHT = 200;
 
 export const PLAYER_GRAVITY_Y = 350;
 export const PLAYER_BOUNCE = 0.2;
-/** Headroom above MAX_LIFT, so the biggest captures are not clamped flat. */
-export const PLAYER_MAX_VELOCITY = 900;
+/**
+ * Horizontal cap only needs to cover chess steering (7 files x 50) and the
+ * rune run speed. Vertical needs headroom above MAX_LIFT and above the
+ * victory fling, or the biggest launches get clamped flat.
+ */
+export const PLAYER_MAX_VELOCITY_X = 400;
+export const PLAYER_MAX_VELOCITY_Y = 2200;
+
+/** Upward launch awarded for winning a chess game in Endless Ascent. */
+export const VICTORY_FLING_VELOCITY = -2000;
 
 /** File delta of a chess move multiplied by this to steer left/right. */
 export const STEER_PER_FILE = 50;

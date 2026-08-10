@@ -18,12 +18,6 @@ import {
 const MAX_ROWS = 8;
 const ROW_HEIGHT = 46;
 
-const DIFFICULTY_COLOR: Record<string, string> = {
-    Novice: '#2f6b34',
-    Intermediate: '#2a4a80',
-    Expert: '#8a2230'
-};
-
 /** Medal tints for the top three places. */
 const RANK_COLOR = ['#a8801f', '#6f6f78', '#8a5a2b'];
 
@@ -57,11 +51,11 @@ export class Leaderboard extends Scene {
             centerX - tableWidth * 0.34, // name
             centerX - tableWidth * 0.02, // score
             centerX + tableWidth * 0.16, // stage
-            centerX + tableWidth * 0.36 // difficulty
+            centerX + tableWidth * 0.36 // games won
         ];
 
         // Header
-        const headers = ['#', 'Champion', 'Score', 'Stage', 'Difficulty'];
+        const headers = ['#', 'Champion', 'Score', 'Stage', 'Games Won'];
         const headerOrigins = [0, 0, 1, 0.5, 0.5];
         headers.forEach((header, i) => {
             this.add
@@ -127,11 +121,12 @@ export class Leaderboard extends Scene {
                 })
                 .setOrigin(0.5);
 
+            // Older entries predate the games-won counter.
             this.add
-                .text(columnX[4], y, entry.difficulty, {
-                    fontFamily: FONT_BODY,
-                    fontSize: '19px',
-                    color: DIFFICULTY_COLOR[entry.difficulty] ?? INK_SOFT
+                .text(columnX[4], y, entry.gamesWon === undefined ? '—' : `${entry.gamesWon}`, {
+                    fontFamily: FONT_DISPLAY,
+                    fontSize: '20px',
+                    color: entry.gamesWon ? '#2f6b34' : INK_SOFT
                 })
                 .setOrigin(0.5);
         });
