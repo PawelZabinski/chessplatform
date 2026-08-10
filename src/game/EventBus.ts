@@ -7,6 +7,8 @@ export const EventBus = new Events.EventEmitter();
 
 export const ChessEvents = {
 	selectDifficulty: 'chess:select-difficulty',
+	/** Load a specific starting position and engine strength (tower floors). */
+	loadPosition: 'chess:load-position',
 	enPassant: 'chess:en-passant',
 	removePiece: 'chess:remove-piece',
 	/** Stage reward: put the most recently lost piece back on the board. */

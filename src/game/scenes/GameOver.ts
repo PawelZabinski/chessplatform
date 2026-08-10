@@ -1,173 +1,226 @@
-import { leaderboard } from '../../lib/stores/chess';
-import { ChessEvents, EventBus } from '../EventBus';
 import { Scene } from 'phaser';
+import { leaderboard } from '$lib/stores/chess';
+import { towerProgress } from '$lib/stores/progress';
+import { ChessEvents, EventBus } from '../EventBus';
+import { TOTAL_FLOORS, floorByNumber } from '../levels';
+import type { RunOutcome } from './Game';
 import {
-    PALETTE,
-    INK,
-    INK_SOFT,
-    GOLD,
-    FONT_BODY,
-    FONT_DISPLAY,
-    bannerHeading,
-    drawBackdrop,
-    ornateButton,
-    parchmentPanel
+	FONT_BODY,
+	FONT_DISPLAY,
+	GOLD,
+	INK,
+	INK_SOFT,
+	PALETTE,
+	bannerHeading,
+	drawBackdrop,
+	ornateButton,
+	parchmentPanel
 } from '../theme';
 
 export class GameOver extends Scene {
-    private gameOverReason!: string;
-    private winner!: string;
-    private isVictory!: boolean;
-    private maxScore!: number;
-    private difficulty!: string;
-    private stageName!: string;
-    private stagesCleared!: number;
-    private hasSavedToLeaderboard!: boolean;
-    private saveButtonText!: Phaser.GameObjects.Text;
+	private outcome!: RunOutcome;
+	private hasSaved = false;
+	private saveButtonText?: Phaser.GameObjects.Text;
 
-    constructor() {
-        super('GameOver');
-    }
+	constructor() {
+		super('GameOver');
+	}
 
-    init(data: {
-        reason: string;
-        result: number;
-        maxScore: number;
-        difficulty: string;
-        stageName?: string;
-        stagesCleared?: number;
-    }) {
-        this.maxScore = data.maxScore;
-        this.gameOverReason = data.reason;
-        this.isVictory = data.result === 1;
-        this.winner =
-            data.result === 1
-                ? 'The board is yours'
-                : data.result === 0.5
-                ? 'A drawn game'
-                : 'The board is lost';
-        this.difficulty = data.difficulty;
-        this.stageName = data.stageName ?? 'Foothills';
-        this.stagesCleared = data.stagesCleared ?? 0;
-    }
+	init(data: RunOutcome) {
+		this.outcome = data;
+		this.hasSaved = false;
 
-    create() {
-        const centerX = this.scale.width / 2;
-        this.hasSavedToLeaderboard = false;
+		// A tower floor counts as cleared on a win or a draw — on the Spire
+		// floors you are losing, so holding the draw is the objective.
+		if (data.mode === 'tower' && data.floor && data.result >= 0.5) {
+			towerProgress.record(
+				data.floor,
+				data.result === 1 ? 'won' : 'drawn',
+				data.movesPlayed,
+				data.score
+			);
+		}
+	}
 
-        drawBackdrop(this);
+	create() {
+		const centerX = this.scale.width / 2;
+		drawBackdrop(this);
 
-        bannerHeading(this, centerX, 96, this.isVictory ? 'Victory' : 'The Climb Ends', 54);
+		const cleared = this.outcome.mode === 'tower' && this.outcome.result >= 0.5;
+		const won = this.outcome.result === 1;
 
-        // Scroll of results
-        const panelHeight = 236;
-        const panelY = 300;
-        parchmentPanel(this, centerX, panelY, 620, panelHeight);
+		bannerHeading(
+			this,
+			centerX,
+			92,
+			this.outcome.mode === 'tower'
+				? cleared
+					? 'Floor Cleared'
+					: 'Floor Failed'
+				: won
+					? 'Victory'
+					: 'The Climb Ends',
+			50
+		);
 
-        this.add
-            .text(centerX, panelY - 82, this.winner, {
-                fontFamily: FONT_DISPLAY,
-                fontSize: 32,
-                color: INK
-            })
-            .setOrigin(0.5);
+		this.drawScroll(centerX, 292, won, cleared);
+		this.drawButtons(centerX, cleared);
 
-        this.add
-            .text(centerX, panelY - 42, this.gameOverReason, {
-                fontFamily: FONT_BODY,
-                fontSize: 19,
-                color: INK_SOFT,
-                align: 'center',
-                wordWrap: { width: 560 }
-            })
-            .setOrigin(0.5);
+		EventBus.emit('current-scene-ready', this);
+	}
 
-        this.add.rectangle(centerX, panelY - 8, 520, 1, PALETTE.parchmentEdge, 0.6);
+	private drawScroll(centerX: number, panelY: number, won: boolean, cleared: boolean) {
+		const panelHeight = 240;
+		parchmentPanel(this, centerX, panelY, 640, panelHeight);
 
-        // Headline score, the one number that matters.
-        this.add
-            .text(centerX, panelY + 34, this.maxScore.toLocaleString(), {
-                fontFamily: FONT_DISPLAY,
-                fontSize: 56,
-                color: '#7b2230'
-            })
-            .setOrigin(0.5);
+		const headline =
+			this.outcome.result === 1
+				? 'The board is yours'
+				: this.outcome.result === 0.5
+					? 'A drawn game'
+					: 'The board is lost';
 
-        this.add
-            .text(centerX, panelY + 72, 'FINAL SCORE', {
-                fontFamily: FONT_BODY,
-                fontSize: 15,
-                color: INK_SOFT
-            })
-            .setOrigin(0.5);
+		this.add
+			.text(centerX, panelY - 86, headline, {
+				fontFamily: FONT_DISPLAY,
+				fontSize: 30,
+				color: INK
+			})
+			.setOrigin(0.5);
 
-        if (this.isVictory) {
-            this.add
-                .text(centerX, panelY + 96, 'chess victory — score doubled', {
-                    fontFamily: FONT_BODY,
-                    fontSize: 15,
-                    color: '#2f4a32'
-                })
-                .setOrigin(0.5);
-        }
+		this.add
+			.text(centerX, panelY - 48, this.outcome.reason, {
+				fontFamily: FONT_BODY,
+				fontSize: 18,
+				color: INK_SOFT,
+				align: 'center',
+				wordWrap: { width: 580 }
+			})
+			.setOrigin(0.5);
 
-        // Stage summary strip beneath the scroll.
-        this.add
-            .text(
-                centerX,
-                panelY + panelHeight / 2 + 34,
-                `Reached ${this.stageName}   ·   ${this.stagesCleared} stage${this.stagesCleared === 1 ? '' : 's'} cleared   ·   ${this.difficulty}`,
-                {
-                    fontFamily: FONT_BODY,
-                    fontSize: 19,
-                    color: GOLD,
-                    stroke: '#140d06',
-                    strokeThickness: 3
-                }
-            )
-            .setOrigin(0.5);
+		this.add.rectangle(centerX, panelY - 16, 540, 1, PALETTE.parchmentEdge, 0.6);
 
-        ornateButton(this, centerX, 500, 'Climb Again', () => {
-            EventBus.emit(ChessEvents.resetBoard);
-            this.scene.start('Game', { difficulty: this.difficulty });
-        }, { fontSize: 28 });
+		this.add
+			.text(centerX, panelY + 26, this.outcome.score.toLocaleString(), {
+				fontFamily: FONT_DISPLAY,
+				fontSize: 52,
+				color: '#7b2230'
+			})
+			.setOrigin(0.5);
 
-        const saveButton = ornateButton(
-            this,
-            centerX,
-            574,
-            'Record in the Hall',
-            () => this.saveScore(),
-            { fill: PALETTE.royal, fillHover: PALETTE.royalLight }
-        );
-        this.saveButtonText = saveButton.text;
+		this.add
+			.text(centerX, panelY + 62, 'CLIMB SCORE', {
+				fontFamily: FONT_BODY,
+				fontSize: 14,
+				color: INK_SOFT
+			})
+			.setOrigin(0.5);
 
-        ornateButton(this, centerX, 648, 'Return to Gate', () => {
-            EventBus.emit(ChessEvents.resetBoard);
-            this.scene.start('StartMenu');
-        }, { fill: PALETTE.crimson, fillHover: PALETTE.crimsonLight });
+		const detail =
+			this.outcome.mode === 'tower'
+				? `${this.outcome.movesPlayed} move${this.outcome.movesPlayed === 1 ? '' : 's'} played`
+				: `Reached ${this.outcome.stageName} · ${this.outcome.stagesCleared} stage${this.outcome.stagesCleared === 1 ? '' : 's'} cleared`;
 
-        EventBus.emit('current-scene-ready', this);
-    }
+		this.add
+			.text(centerX, panelY + 90, won ? `${detail}  ·  score doubled` : detail, {
+				fontFamily: FONT_BODY,
+				fontSize: 15,
+				color: cleared || won ? '#2f4a32' : INK_SOFT
+			})
+			.setOrigin(0.5);
+	}
 
-    private saveScore() {
-        if (this.hasSavedToLeaderboard) {
-            return;
-        }
+	private drawButtons(centerX: number, cleared: boolean) {
+		if (this.outcome.mode === 'tower') {
+			this.drawTowerButtons(centerX, cleared);
+			return;
+		}
 
-        const name = prompt('By what name shall you be recorded?');
-        leaderboard.add({
-            name: name ? name : 'Anonymous',
-            score: this.maxScore,
-            difficulty: this.difficulty,
-            stage: this.stageName
-        });
+		ornateButton(this, centerX, 496, 'Climb Again', () => this.restartEndless(), { fontSize: 27 });
 
-        this.hasSavedToLeaderboard = true;
-        this.saveButtonText.setText('Recorded ✓');
-    }
+		const save = ornateButton(this, centerX, 568, 'Record in the Hall', () => this.saveScore(), {
+			fill: PALETTE.royal,
+			fillHover: PALETTE.royalLight
+		});
+		this.saveButtonText = save.text;
 
-    changeScene() {
-        this.scene.start('Game');
-    }
+		ornateButton(this, centerX, 640, 'Return to Gate', () => this.toMenu(), {
+			fill: PALETTE.crimson,
+			fillHover: PALETTE.crimsonLight
+		});
+	}
+
+	private drawTowerButtons(centerX: number, cleared: boolean) {
+		const floor = this.outcome.floor ?? 1;
+		const nextFloor = floor + 1;
+		const hasNext = nextFloor <= TOTAL_FLOORS;
+
+		if (cleared && hasNext) {
+			const next = floorByNumber(nextFloor);
+			ornateButton(
+				this,
+				centerX,
+				496,
+				`Next Floor  ·  ${next?.name ?? nextFloor}`,
+				() => this.scene.start('Game', { mode: 'tower', floor: nextFloor }),
+				{ fontSize: 26, width: 380 }
+			);
+		} else if (cleared) {
+			this.add
+				.text(centerX, 496, 'You have reached the crown of the tower.', {
+					fontFamily: FONT_DISPLAY,
+					fontSize: 24,
+					color: GOLD,
+					stroke: '#140d06',
+					strokeThickness: 4
+				})
+				.setOrigin(0.5);
+		}
+
+		ornateButton(
+			this,
+			centerX,
+			cleared ? 568 : 496,
+			'Retry Floor',
+			() => this.scene.start('Game', { mode: 'tower', floor }),
+			{ fill: PALETTE.royal, fillHover: PALETTE.royalLight, width: 380 }
+		);
+
+		ornateButton(
+			this,
+			centerX,
+			cleared ? 640 : 568,
+			'The Tower',
+			() => {
+				EventBus.emit(ChessEvents.resetBoard);
+				this.scene.start('LevelSelect');
+			},
+			{ fill: PALETTE.crimson, fillHover: PALETTE.crimsonLight, width: 380 }
+		);
+	}
+
+	private restartEndless() {
+		EventBus.emit(ChessEvents.resetBoard);
+		this.scene.start('Game', { mode: 'endless', difficulty: this.outcome.difficulty });
+	}
+
+	private toMenu() {
+		EventBus.emit(ChessEvents.resetBoard);
+		this.scene.start('StartMenu');
+	}
+
+	private saveScore() {
+		if (this.hasSaved) return;
+
+		const name = prompt('By what name shall you be recorded?');
+		leaderboard.add({
+			name: name ? name : 'Anonymous',
+			score: this.outcome.score,
+			difficulty: this.outcome.difficulty ?? 'Intermediate',
+			stage: this.outcome.stageName
+		});
+
+		this.hasSaved = true;
+		this.saveButtonText?.setText('Recorded ✓');
+	}
 }

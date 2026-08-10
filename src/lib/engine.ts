@@ -16,8 +16,8 @@ type UciCallback = (uci: string) => void;
 export class Engine {
 	private stockfish?: Worker;
 	private state: EngineState = 'uninitialised';
-	private readonly moveTime: number;
-	private readonly depth: number;
+	private moveTime: number;
+	private depth: number;
 	private readonly stockfishPath: string;
 	private onUciOk?: () => void;
 	private onBestMove?: UciCallback;
@@ -54,6 +54,19 @@ export class Engine {
 		});
 	}
 
+	/**
+	 * Applies a tower floor's engine settings. The ladder tunes strength per
+	 * floor, which is why the global difficulty selector belongs to endless mode
+	 * rather than to the tower.
+	 */
+	configure(settings: { randomMoveProbability?: number; depth?: number; moveTime?: number }): void {
+		if (settings.randomMoveProbability !== undefined) {
+			this.randomMoveProbability = settings.randomMoveProbability;
+		}
+		if (settings.depth !== undefined) this.depth = settings.depth;
+		if (settings.moveTime !== undefined) this.moveTime = settings.moveTime;
+	}
+
 	/** Initialise Stockfish. Resolve promise after receiving uciok. */
 	init(): Promise<void> {
 		return new Promise((resolve) => {
@@ -85,7 +98,6 @@ export class Engine {
 	}
 
 	getMove(fen: string): Promise<string> {
-		console.log('Random probability:', this.randomMoveProbability);
 		return new Promise((resolve) => {
 			if (!this.stockfish) throw new Error('Engine not initialised');
 			if (this.state !== 'waiting') throw new Error(`Engine not ready (state: ${this.state})`);
@@ -112,13 +124,11 @@ export class Engine {
 
 					if (blunderMoves.length > 0) {
 						const randomIndex = Math.floor(Math.random() * blunderMoves.length);
-						console.log('Random move chosen.');
 						resolve(blunderMoves[randomIndex]);
 						return;
 					}
 				}
 
-				console.log('Best move chosen.');
 				resolve(bestMoveLan);
 			};
 		});

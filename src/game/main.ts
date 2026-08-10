@@ -4,6 +4,7 @@ import { Game as MainGame } from './scenes/Game';
 import { AUTO, Game } from 'phaser';
 import { Preloader } from './scenes/Preloader';
 import { StartMenu } from './scenes/StartMenu';
+import { LevelSelect } from './scenes/LevelSelect';
 import { Leaderboard } from './scenes/Leaderboard';
 
 // Find out more information about the Game Config at:
@@ -23,6 +24,7 @@ const config: Phaser.Types.Core.GameConfig = {
         Boot,
         Preloader,
         StartMenu,
+        LevelSelect,
         Leaderboard,
         MainGame,
         GameOver

@@ -13,9 +13,8 @@
 		const move = event.detail;
 		chessState.addMove(move);
 
-		// Check if move was an en passant
 		if (move.flags.includes('e')) {
-			EventBus.emit(ChessEvents.enPassant)
+			EventBus.emit(ChessEvents.enPassant);
 		}
 	}
 
@@ -24,38 +23,45 @@
 	}
 
 	function removeRandomPiece(colour: Color = 'w'): void {
-		chessState.removeRandomPiece(colour, (newFen) => {
-			chessboard?.load(newFen);
-		});
+		chessState.removeRandomPiece(colour, (newFen) => chessboard?.load(newFen));
 	}
 
 	function restoreFallenPiece(colour: Color = 'w'): void {
-		chessState.restoreFallenPiece(colour, (newFen) => {
-			chessboard?.load(newFen);
-		});
+		chessState.restoreFallenPiece(colour, (newFen) => chessboard?.load(newFen));
+	}
+
+	/**
+	 * Tower floors drop the player into an existing position with their own
+	 * engine strength, rather than a fresh game at a global difficulty.
+	 */
+	function loadPosition(detail: {
+		fen: string;
+		engine?: { randomMoveProbability?: number; depth?: number; moveTime?: number };
+	}): void {
+		if (detail?.engine) {
+			engine.configure(detail.engine);
+		}
+		chessState.reset((newFen) => chessboard?.load(newFen), detail.fen);
 	}
 
 	onMount(() => {
-		const removeListener = colour => removeRandomPiece(colour);
+		const removeListener = (colour: Color) => removeRandomPiece(colour);
+		const restoreListener = (colour: Color) => restoreFallenPiece(colour);
+		const resetListener = () => chessState.reset((newFen) => chessboard?.load(newFen));
+		const loadListener = (detail: Parameters<typeof loadPosition>[0]) => loadPosition(detail);
+
 		EventBus.on(ChessEvents.removePiece, removeListener);
-
-		const restoreListener = colour => restoreFallenPiece(colour);
 		EventBus.on(ChessEvents.restorePiece, restoreListener);
-
-        const resetListener = () => chessState.reset(newFen => chessboard?.load(newFen))
-        EventBus.on(ChessEvents.resetBoard, resetListener)
+		EventBus.on(ChessEvents.resetBoard, resetListener);
+		EventBus.on(ChessEvents.loadPosition, loadListener);
 
 		return () => {
 			EventBus.off(ChessEvents.removePiece, removeListener);
 			EventBus.off(ChessEvents.restorePiece, restoreListener);
-            EventBus.off(ChessEvents.resetBoard, resetListener)
+			EventBus.off(ChessEvents.resetBoard, resetListener);
+			EventBus.off(ChessEvents.loadPosition, loadListener);
 		};
 	});
 </script>
 
-<Chess 
-	bind:this={chessboard}
-	on:move={handleMove}
-	on:gameOver={handleGameOver}
-	engine={engine}
-/>
+<Chess bind:this={chessboard} on:move={handleMove} on:gameOver={handleGameOver} {engine} />

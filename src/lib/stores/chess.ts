@@ -1,4 +1,4 @@
-import { writable, type Readable } from 'svelte/store';
+import { writable, get, type Readable } from 'svelte/store';
 import { Chess, type Piece, type Square } from 'chess.js';
 import type { Move } from 'svelte-chess';
 
@@ -36,6 +36,7 @@ type ChessStateStore = Readable<string> & {
 	restoreFallenPiece: (colour?: PieceColor, callback?: (newFen: string) => void) => FallenPiece | null;
 	fallenCount: (colour?: PieceColor) => number;
 	reset: (callback?: (newFen: string) => void, fen?: string) => void;
+	moveCount: () => number;
 };
 
 function createChessStateStore(): ChessStateStore {
@@ -117,6 +118,10 @@ function createChessStateStore(): ChessStateStore {
 			fallen = [];
 			set(fen);
 			callback(fen);
+		},
+		/** Number of White moves played so far, used to score tower floors. */
+		moveCount() {
+			return get(moves).filter((move) => move.color === 'w').length;
 		}
 	};
 }
