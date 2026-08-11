@@ -107,6 +107,20 @@ export class StartMenu extends Scene {
 				(y) => caption(this, centerX, y, endlessBlurb, { size: 15, color: GOLD, wrapWidth: blurbWrap }),
 				34
 			)
+			.add(
+				62,
+				(y) =>
+					// Scaffolding only — the lobby itself is marked Coming Soon.
+					ornateButton(
+						this,
+						centerX,
+						y,
+						'Two Climbers  ·  Soon',
+						() => this.scene.start('MultiplayerLobby'),
+						{ fill: PALETTE.oakLight, fillHover: PALETTE.oak, width: buttonWidth, fontSize: 24 }
+					),
+				24
+			)
 			.add(62, (y) =>
 				ornateButton(this, centerX, y, 'Hall of Champions', () => this.scene.start('Leaderboard'), {
 					fill: PALETTE.crimson,

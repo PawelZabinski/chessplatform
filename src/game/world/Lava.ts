@@ -18,13 +18,26 @@ export class Lava {
 	private embers?: Phaser.GameObjects.Particles.ParticleEmitter;
 	private caught = false;
 
+	/**
+	 * How far below the player the lava is allowed to trail, as a fraction of the
+	 * viewport height. The camera centres the player, so half a screen puts the
+	 * crust right at the bottom edge of the view: close enough to be a constant
+	 * visible threat, and it climbs into frame the moment the player stalls.
+	 */
+	private static readonly TRAIL_FRACTION = 0.5;
+	/** Ceiling on the catch-up rate, so it glides up rather than teleporting. */
+	private static readonly MAX_CATCH_UP = 700;
+
+	private readonly worldHeight: number;
+
 	constructor(
 		private readonly scene: Phaser.Scene,
 		private readonly worldWidth: number,
 		worldHeight: number,
-		/** Rise rate in px/s. 0 disables the lava entirely. */
+		/** Base rise rate in px/s. 0 disables the lava entirely. */
 		private readonly speed: number
 	) {
+		this.worldHeight = worldHeight;
 		this.surfaceY = worldHeight + 140;
 		if (this.speed > 0) this.draw(worldHeight);
 	}
@@ -95,7 +108,18 @@ export class Lava {
 	update(delta: number, playerY: number): boolean {
 		if (this.speed <= 0 || this.caught) return false;
 
-		this.surfaceY -= this.speed * (delta / 1000);
+		const seconds = delta / 1000;
+		this.surfaceY -= this.speed * seconds;
+
+		// A flat rise rate can never keep pace with a climbing player, so the
+		// lava simply vanished below the world and stopped being a threat. It now
+		// closes any excess gap, staying within a trail distance of the player.
+		const target = playerY + this.worldHeight * Lava.TRAIL_FRACTION;
+		const excess = this.surfaceY - target;
+		if (excess > 0) {
+			const catchUp = Math.min(excess * 1.4, Lava.MAX_CATCH_UP);
+			this.surfaceY = Math.max(target, this.surfaceY - catchUp * seconds);
+		}
 
 		this.body.y = this.surfaceY;
 		this.surface.y = this.surfaceY + 10;

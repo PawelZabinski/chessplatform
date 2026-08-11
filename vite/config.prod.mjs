@@ -1,5 +1,12 @@
 import { defineConfig } from 'vite';
 import { sveltekit } from '@sveltejs/kit/vite';
+import { fileURLToPath } from 'node:url';
+
+// chessground's package exports map rewrites "./*" to "./*.js", so its
+// stylesheets cannot be imported by package path. Aliasing the assets folder
+// keeps the package as the source of truth rather than vendoring its CSS.
+const chessgroundAssets = fileURLToPath(new URL('../node_modules/chessground/assets', import.meta.url));
+
 
 const MESSAGE_INTERVAL_MS = 1000000;
 const lastMessageTime = process.env.LAST_MESSAGE_TIME || 0;
@@ -15,6 +22,9 @@ if (now - lastMessageTime > MESSAGE_INTERVAL_MS) {
 }
 
 export default defineConfig({
+	resolve: {
+		alias: { 'chessground-assets': chessgroundAssets }
+	},
     base: './',
     plugins: [
         sveltekit(),
