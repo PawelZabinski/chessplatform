@@ -105,9 +105,14 @@ function stoneTexture(scene: Phaser.Scene, theme: TerrainTheme) {
 	});
 }
 
-/** Brick floor of the tower, with moss along the top course. */
+/**
+ * Brick floor of the tower, with moss along the top course.
+ *
+ * Deliberately tall: the tile is anchored by its top surface and hangs past the
+ * bottom of the canvas, so no gap can show beneath it at any viewport height.
+ */
 function groundTexture(scene: Phaser.Scene, theme: TerrainTheme) {
-	canvasTexture(scene, groundKey(theme), 64, 32, (ctx, w, h) => {
+	canvasTexture(scene, groundKey(theme), 64, 112, (ctx, w, h) => {
 		const { courseA, courseB, joint, moss } = theme.ground;
 		const brickH = 8;
 

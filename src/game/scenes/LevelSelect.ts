@@ -70,6 +70,11 @@ export class LevelSelect extends Scene {
 		EventBus.emit('current-scene-ready', this);
 	}
 
+	/** Widest content strip that fits the canvas, with a margin either side. */
+	private get contentWidth() {
+		return Math.min(860, this.scale.width - 56);
+	}
+
 	private drawWingRow(
 		wing: string,
 		floors: TowerFloor[],
@@ -77,19 +82,26 @@ export class LevelSelect extends Scene {
 		progress: Record<number, { result: string }>
 	) {
 		const centerX = this.scale.width / 2;
+		const width = this.contentWidth;
+		const left = centerX - width / 2;
 
 		this.add
-			.text(centerX - 430, y - 30, wing.toUpperCase(), {
+			.text(left, y - 30, wing.toUpperCase(), {
 				fontFamily: FONT_BODY,
 				fontSize: '14px',
 				color: GOLD
 			})
 			.setOrigin(0, 0.5);
 
-		this.add.rectangle(centerX, y - 16, 860, 1, PALETTE.gold, 0.35);
+		this.add.rectangle(centerX, y - 16, width, 1, PALETTE.gold, 0.35);
 
-		const tileSize = 58;
+		// Tiles shrink to fit rather than spilling past the edge of the canvas.
 		const gap = 14;
+		const tileSize = Phaser.Math.Clamp(
+			Math.floor((width - gap * (floors.length - 1)) / floors.length),
+			30,
+			58
+		);
 		const totalWidth = floors.length * tileSize + (floors.length - 1) * gap;
 		let x = centerX - totalWidth / 2 + tileSize / 2;
 
@@ -161,7 +173,7 @@ export class LevelSelect extends Scene {
 				align: 'center',
 				stroke: '#140d06',
 				strokeThickness: 3,
-				wordWrap: { width: 720 }
+				wordWrap: { width: Math.min(720, this.scale.width - 60) }
 			})
 			.setOrigin(0.5)
 			.setAlpha(0);

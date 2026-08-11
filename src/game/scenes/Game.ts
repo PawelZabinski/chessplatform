@@ -1063,7 +1063,7 @@ export class Game extends Scene {
 	/** Parchment card explaining the mechanic a tower floor introduces. */
 	private showTeachingCard(text: string) {
 		const centerX = this.worldWidth / 2;
-		const y = this.worldHeight - 130;
+		const y = this.worldHeight - 135;
 
 		const panel = this.add
 			.rectangle(centerX, y, 760, 92, PALETTE.parchment, 0.95)

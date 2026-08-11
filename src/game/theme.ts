@@ -214,17 +214,77 @@ export function ornateButton(
 	return { container, text, face };
 }
 
-/** Small centred caption in muted ink, for hints and subtitles. */
-export function caption(scene: Phaser.Scene, x: number, y: number, label: string, size = 18) {
+export interface CaptionOptions {
+	size?: number;
+	color?: string;
+	/** Defaults to 80% of the canvas, capped so long lines stay readable. */
+	wrapWidth?: number;
+	lineSpacing?: number;
+}
+
+/**
+ * Small centred caption. Line spacing is generous by default — these wrap to
+ * two or three lines often, and the display serif needs the room.
+ */
+export function caption(
+	scene: Phaser.Scene,
+	x: number,
+	y: number,
+	label: string,
+	options: CaptionOptions | number = {}
+) {
+	const opts: CaptionOptions = typeof options === 'number' ? { size: options } : options;
+	const size = opts.size ?? 18;
+
 	return scene.add
 		.text(x, y, label, {
 			fontFamily: FONT_BODY,
 			fontSize: `${size}px`,
-			color: PARCHMENT,
+			color: opts.color ?? PARCHMENT,
 			stroke: '#140d06',
 			strokeThickness: 3,
 			align: 'center',
-			wordWrap: { width: scene.scale.width * 0.7 }
+			lineSpacing: opts.lineSpacing ?? Math.round(size * 0.5),
+			wordWrap: { width: opts.wrapWidth ?? Math.min(760, scene.scale.width * 0.8) }
 		})
 		.setOrigin(0.5);
+}
+
+/**
+ * Vertical flow layout.
+ *
+ * Menus used to place everything at hand-picked Y values, which left dead space
+ * on tall canvases and overlapped on short ones. This stacks blocks by their
+ * measured height instead, then centres the column.
+ */
+export class Column {
+	private readonly blocks: { height: number; gapAfter: number; place: (y: number) => void }[] = [];
+
+	constructor(private readonly scene: Phaser.Scene) {}
+
+	/** `place` receives the vertical centre of the block. */
+	add(height: number, place: (centreY: number) => void, gapAfter = 18) {
+		this.blocks.push({ height, gapAfter, place });
+		return this;
+	}
+
+	gap(space: number) {
+		this.blocks.push({ height: 0, gapAfter: space, place: () => {} });
+		return this;
+	}
+
+	/** Lays the column out, centred in [top, bottom]. Returns the bottom edge. */
+	flush(top: number, bottom: number): number {
+		const total = this.blocks.reduce(
+			(sum, b, i) => sum + b.height + (i < this.blocks.length - 1 ? b.gapAfter : 0),
+			0
+		);
+		let y = top + Math.max(0, (bottom - top - total) / 2);
+
+		for (const block of this.blocks) {
+			block.place(y + block.height / 2);
+			y += block.height + block.gapAfter;
+		}
+		return y;
+	}
 }

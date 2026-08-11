@@ -4,6 +4,7 @@ import { ChessEvents, EventBus } from '../EventBus';
 import { TOTAL_FLOORS } from '../levels';
 import { towerProgress } from '$lib/stores/progress';
 import {
+	Column,
 	FONT_BODY,
 	GOLD,
 	PALETTE,
@@ -13,6 +14,13 @@ import {
 	drawBackdrop,
 	ornateButton
 } from '../theme';
+
+const CONTROLS = [
+	'captures lift you — the bigger the piece, the higher the leap',
+	'files steer left and right  ·  space brakes you to a stop',
+	'↓ or S drops through a wooden plank, never through stone',
+	'gold runes grant 5s of ← → / A D control and jumps, stacking to 10s'
+];
 
 /**
  * Two modes, neither with a difficulty selector.
@@ -27,76 +35,116 @@ export class StartMenu extends Scene {
 
 	create() {
 		const centerX = this.scale.width / 2;
+		const height = this.scale.height;
 		drawBackdrop(this);
 
-		bannerHeading(this, centerX, 104, 'ChessPlatform', 56);
-		caption(
-			this,
-			centerX,
-			178,
-			'Your moves on the board are the climb. Captures launch you; stalling burns you.',
-			19
-		);
+		// The controls plaque is laid out first so the menu column knows how much
+		// room is left; otherwise a short canvas pushes it off the bottom edge.
+		const plaqueTop = this.drawControlsPlaque(centerX, height);
 
 		const cleared = Object.keys(get(towerProgress)).length;
 		const next = towerProgress.highestUnlocked();
+		const buttonWidth = Math.min(420, this.scale.width - 80);
 
-		ornateButton(
-			this,
-			centerX,
-			278,
-			cleared === 0 ? 'Enter the Tower' : `Climb the Tower  ·  Floor ${next}`,
-			() => this.scene.start('LevelSelect'),
-			{ fontSize: 29, width: 400 }
-		);
+		const tagline =
+			'Your moves on the board are the climb. Captures launch you; stalling burns you.';
+		const endlessBlurb =
+			'Beat a game and you are flung skyward into the next. The engine sharpens as you climb; the run ends only when you lose.';
+		const blurbWrap = Math.min(560, this.scale.width - 100);
 
-		caption(this, centerX, 328, `${cleared} of ${TOTAL_FLOORS} floors cleared`, 15).setColor(GOLD);
+		// Wrapped captions have to be measured before the column can place them.
+		const taglineHeight = this.measureCaption(tagline, 19);
+		const blurbHeight = this.measureCaption(endlessBlurb, 15, blurbWrap);
 
-		ornateButton(
-			this,
-			centerX,
-			406,
-			'Endless Ascent',
-			() => {
-				EventBus.emit(ChessEvents.resetBoard);
-				this.scene.start('Game', { mode: 'endless' });
-			},
-			{ fill: PALETTE.royal, fillHover: PALETTE.royalLight, width: 400, fontSize: 27 }
-		);
-
-		caption(
-			this,
-			centerX,
-			456,
-			'Beat a game and you are flung skyward into the next. The engine sharpens as you climb; the run ends only when you lose.',
-			15
-		).setColor(GOLD);
-
-		ornateButton(this, centerX, 536, 'Hall of Champions', () => this.scene.start('Leaderboard'), {
-			fill: PALETTE.crimson,
-			fillHover: PALETTE.crimsonLight,
-			width: 400
-		});
-
-		this.drawControlsPlaque(centerX, this.scale.height - 116);
+		new Column(this)
+			.add(64, (y) => bannerHeading(this, centerX, y, 'ChessPlatform', 52), 34)
+			.add(taglineHeight, (y) => caption(this, centerX, y, tagline, { size: 19 }), 40)
+			.add(
+				62,
+				(y) =>
+					ornateButton(
+						this,
+						centerX,
+						y,
+						cleared === 0 ? 'Enter the Tower' : `Climb the Tower  ·  Floor ${next}`,
+						() => this.scene.start('LevelSelect'),
+						{ fontSize: 28, width: buttonWidth }
+					),
+				14
+			)
+			.add(
+				20,
+				(y) =>
+					caption(this, centerX, y, `${cleared} of ${TOTAL_FLOORS} floors cleared`, {
+						size: 15,
+						color: GOLD
+					}),
+				34
+			)
+			.add(
+				62,
+				(y) =>
+					ornateButton(
+						this,
+						centerX,
+						y,
+						'Endless Ascent',
+						() => {
+							EventBus.emit(ChessEvents.resetBoard);
+							this.scene.start('Game', { mode: 'endless' });
+						},
+						{
+							fill: PALETTE.royal,
+							fillHover: PALETTE.royalLight,
+							width: buttonWidth,
+							fontSize: 28
+						}
+					),
+				16
+			)
+			.add(
+				blurbHeight,
+				(y) => caption(this, centerX, y, endlessBlurb, { size: 15, color: GOLD, wrapWidth: blurbWrap }),
+				34
+			)
+			.add(62, (y) =>
+				ornateButton(this, centerX, y, 'Hall of Champions', () => this.scene.start('Leaderboard'), {
+					fill: PALETTE.crimson,
+					fillHover: PALETTE.crimsonLight,
+					width: buttonWidth
+				})
+			)
+			.flush(40, plaqueTop - 28);
 
 		EventBus.emit('current-scene-ready', this);
 	}
 
-	private drawControlsPlaque(x: number, y: number) {
-		this.add.rectangle(x, y, 720, 2, PALETTE.gold, 0.5);
+	/** Measures a wrapped caption without leaving it on screen. */
+	private measureCaption(text: string, size: number, wrapWidth?: number): number {
+		const probe = caption(this, -9999, -9999, text, { size, wrapWidth });
+		const height = probe.height;
+		probe.destroy();
+		return height;
+	}
 
-		const lines = [
-			'captures lift you — the bigger the piece, the higher the leap',
-			'files steer left and right  ·  space brakes you to a stop',
-			'↓ or S drops you through a wooden plank — never through stone',
-			'gold runes grant 5s of ← → / A D control and jumps, stacking to 10s',
-			'wooden planks can be jumped through — grey stone cannot'
-		];
+	/**
+	 * Footer plaque, anchored to the bottom of the canvas. Returns its top edge
+	 * so the main column can lay itself out in the space above.
+	 */
+	private drawControlsPlaque(x: number, canvasHeight: number): number {
+		const lineHeight = 23;
+		const bottomPad = 27;
+		const rulePad = 16;
 
-		lines.forEach((line, i) => {
+		const blockHeight = CONTROLS.length * lineHeight;
+		const firstLineY = canvasHeight - bottomPad - blockHeight + lineHeight / 2;
+		const ruleY = firstLineY - lineHeight / 2 - rulePad;
+
+		this.add.rectangle(x, ruleY, Math.min(760, this.scale.width - 60), 2, PALETTE.gold, 0.5);
+
+		CONTROLS.forEach((line, i) => {
 			this.add
-				.text(x, y + 20 + i * 21, line, {
+				.text(x, firstLineY + i * lineHeight, line, {
 					fontFamily: FONT_BODY,
 					fontSize: '15px',
 					color: PARCHMENT,
@@ -106,5 +154,7 @@ export class StartMenu extends Scene {
 				.setOrigin(0.5)
 				.setAlpha(0.85);
 		});
+
+		return ruleY;
 	}
 }

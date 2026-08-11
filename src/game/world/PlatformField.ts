@@ -4,6 +4,13 @@ import { createAllTerrainTextures, groundKey, stoneKey, woodKey } from './textur
 import { THEMES, type TerrainTheme } from './themes';
 import { pickPlatformCount, runeChance, stageForLevel } from '../stages';
 
+/**
+ * Top of the walkable ground, relative to the bottom of the canvas. Pinned to
+ * the value the original short tile produced, so making the ground art taller
+ * changed only how far it hangs below the screen, never where the player stands.
+ */
+const GROUND_SURFACE_Y_OFFSET = -70.6;
+
 /** Hazard rates can be overridden per tower floor; endless mode uses the stage. */
 export interface FieldRules {
 	spikeChance?: number;
@@ -104,13 +111,21 @@ export class PlatformField {
 	private createGroundTiles() {
 		if (!this.groundTileWidth) return;
 
+		const key = groundKey(this.themeForLevel(0));
+		const source = this.scene.textures.get(key).getSourceImage() as HTMLImageElement;
+		const tileHeight = source.height * this.groundScale;
+
+		// Anchor by the walkable surface, not by the tile centre, so the block can
+		// be as tall as it likes and still leave collision exactly where it was.
+		const centreY = GROUND_SURFACE_Y_OFFSET + tileHeight / 2;
+
 		const tilesNeeded = Math.ceil(this.worldWidth / this.groundTileWidth) + 3;
 		for (let i = 0; i < tilesNeeded; i++) {
 			const x = -this.groundTileWidth + i * this.groundTileWidth + this.groundTileWidth / 2;
 			const ground = this.platforms.create(
 				x,
-				this.worldHeight - 45,
-				groundKey(this.themeForLevel(0))
+				this.worldHeight + centreY,
+				key
 			) as Phaser.Physics.Arcade.Image;
 			ground.setData('blocked', true);
 			ground.setScale(this.groundScale);
