@@ -3,18 +3,19 @@ import { writable, get, type Readable } from 'svelte/store';
 /**
  * Player settings, persisted to localStorage.
  *
- * Game speed is a permanent slow-motion: it scales the whole simulation, not
- * just the visuals. Physics, tweens, sprite animation, the lava and the control
- * rune timer all run at the same fraction, so slowing the game down buys real
- * thinking time per simulated second without changing any of the balance — a
- * capture still lifts you the same number of platform bands.
+ * ⚠️ Game speed applies to MULTIPLAYER ONLY. In single player, slow-motion is an
+ * earned ability rather than a setting — you charge it by climbing and spend it
+ * with Shift (see SLOWMO_* in src/game/config.ts). Letting a solo player simply
+ * turn the whole game down would have removed the cost that makes the ability a
+ * decision.
  *
- * It is deliberately a comfort/accessibility setting rather than a difficulty
- * one, which is why it lives here and not in the difficulty ramp.
+ * In multiplayer it is a match-level value agreed before the match, because a
+ * real-time race where one side runs slower is not a fair race. The lobby is
+ * where it belongs; this store carries the player's preferred value into it.
  */
 
 export const GAME_SPEEDS = [
-	{ value: 1, label: 'Normal', blurb: 'Full speed.' },
+	{ value: 1, label: 'Normal', blurb: 'Full speed. Standard for ranked matches.' },
 	{ value: 0.75, label: 'Measured', blurb: 'A little more room to think.' },
 	{ value: 0.5, label: 'Slow', blurb: 'Half speed. Everything, permanently.' },
 	{ value: 0.35, label: 'Glacial', blurb: 'For picking the climb apart.' }

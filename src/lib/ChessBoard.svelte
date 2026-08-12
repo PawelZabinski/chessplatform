@@ -53,7 +53,8 @@
 				if (move.flags.includes('e')) EventBus.emit(ChessEvents.enPassant);
 			},
 			onPositionChange: (fen) => chessState.setFen(fen),
-			onGameOver: (detail) => EventBus.emit(ChessEvents.gameOver, detail)
+			onGameOver: (detail) => EventBus.emit(ChessEvents.gameOver, detail),
+			onDrawRisk: (risk) => EventBus.emit(ChessEvents.drawRisk, risk)
 		});
 		controller.setOpponent(engineOpponent);
 
@@ -72,12 +73,14 @@
 			loadPosition(detail);
 		};
 		const configureListener = (settings: EngineConfig) => engine.configure(settings);
+		const slowMotionListener = (active: boolean) => controller?.setSlowMotion(active);
 
 		EventBus.on(ChessEvents.removePiece, removeListener);
 		EventBus.on(ChessEvents.restorePiece, restoreListener);
 		EventBus.on(ChessEvents.resetBoard, resetListener);
 		EventBus.on(ChessEvents.loadPosition, loadListener);
 		EventBus.on(ChessEvents.configureEngine, configureListener);
+		EventBus.on(ChessEvents.slowMotion, slowMotionListener);
 
 		return () => {
 			EventBus.off(ChessEvents.removePiece, removeListener);
@@ -85,6 +88,7 @@
 			EventBus.off(ChessEvents.resetBoard, resetListener);
 			EventBus.off(ChessEvents.loadPosition, loadListener);
 			EventBus.off(ChessEvents.configureEngine, configureListener);
+			EventBus.off(ChessEvents.slowMotion, slowMotionListener);
 		};
 	});
 

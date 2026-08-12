@@ -1,7 +1,6 @@
 import { Scene } from 'phaser';
 import { ChessEvents, EventBus } from '../EventBus';
 import { chessState, moves } from '$lib/stores/chess';
-import { settings } from '$lib/stores/settings';
 import {
 	CONTROL_DURATION_MS,
 	CONTROL_DOUBLE_JUMP_VELOCITY,
@@ -15,6 +14,10 @@ import {
 	PLAYER_GRAVITY_Y,
 	PLAYER_MAX_VELOCITY_X,
 	PLAYER_MAX_VELOCITY_Y,
+	SLOWMO_CHARGE_PER_BAND,
+	SLOWMO_DURATION_MS,
+	SLOWMO_FACTOR,
+	SLOWMO_MIN_CHARGE,
 	STEER_PER_FILE,
 	VICTORY_FLING_VELOCITY
 } from '../config';
@@ -97,17 +100,28 @@ export class Game extends Scene {
 	private controlUntil = 0;
 
 	/**
-	 * Permanent slow-motion. Scales the whole simulation, not just visuals, so
-	 * balance is untouched: a capture still lifts you the same number of bands,
-	 * it just takes longer in real seconds.
+	 * Current simulation speed. 1 normally, SLOWMO_FACTOR while the slow-motion
+	 * ability is running. Scales the whole simulation rather than the visuals, so
+	 * balance is untouched — a capture still lifts you the same number of bands.
 	 */
 	private gameSpeed = 1;
+
+	/** Slow-motion ability: charge in 0..1, and how long it has left. */
+	private slowCharge = 0;
+	private slowMotionUntil = 0;
+	private slowKey!: Phaser.Input.Keyboard.Key;
+	private slowBar!: Phaser.GameObjects.Rectangle;
+	private slowBarBg!: Phaser.GameObjects.Rectangle;
+	private slowLabel!: Phaser.GameObjects.Text;
+	private readonly slowBarWidth = 150;
 	/**
 	 * Simulated milliseconds elapsed. Phaser's clock keeps running in real time
 	 * regardless of timeScale, so anything measured in game time (the rune timer,
 	 * the drop-through window) has to be tracked against this instead.
 	 */
 	private simNow = 0;
+	/** Simulated time of the last draw warning, to throttle repeats. */
+	private lastDrawWarningAt = -Infinity;
 
 	private scoreValueText!: Phaser.GameObjects.Text;
 	private stageValueText!: Phaser.GameObjects.Text;
@@ -148,7 +162,6 @@ export class Game extends Scene {
 		this.worldWidth = this.scale.width;
 		this.worldHeight = this.scale.height;
 
-		this.applyGameSpeed();
 		this.resetRunState();
 		this.theme = this.themeForLevel(0);
 		this.createAnimations();
@@ -186,19 +199,47 @@ export class Game extends Scene {
 	}
 
 	/**
-	 * Reads the player's speed setting and slows the whole scene to match.
+	 * Applies a simulation speed to the whole scene.
 	 *
 	 * Arcade physics reads timeScale inversely — larger means slower — while
 	 * tweens and animations take the fraction directly. Our own systems are fed a
 	 * scaled delta in update(), which covers the lava and the climb.
 	 */
-	private applyGameSpeed() {
-		this.gameSpeed = settings.current().gameSpeed;
+	private applyGameSpeed(speed: number) {
+		this.gameSpeed = speed;
 
-		this.physics.world.timeScale = 1 / this.gameSpeed;
-		this.tweens.timeScale = this.gameSpeed;
-		this.time.timeScale = this.gameSpeed;
-		this.anims.globalTimeScale = this.gameSpeed;
+		this.physics.world.timeScale = 1 / speed;
+		this.tweens.timeScale = speed;
+		this.time.timeScale = speed;
+		this.anims.globalTimeScale = speed;
+	}
+
+	private get slowMotionActive() {
+		return this.slowMotionUntil > this.simNow;
+	}
+
+	/**
+	 * Spends the charge meter to enter slow-motion. The board slows with the
+	 * world: the player's move takes a long beat to resolve, and the opponent
+	 * only replies once it has, which is where the thinking time comes from.
+	 */
+	private triggerSlowMotion() {
+		if (this.slowMotionActive || this.slowCharge < SLOWMO_MIN_CHARGE) return;
+
+		this.slowMotionUntil = this.simNow + SLOWMO_DURATION_MS * this.slowCharge * SLOWMO_FACTOR;
+		this.slowCharge = 0;
+
+		this.applyGameSpeed(SLOWMO_FACTOR);
+		EventBus.emit(ChessEvents.slowMotion, true);
+		this.cameras.main.flash(260, 150, 190, 240, false);
+		this.flashMessage('SLOW MOTION', '#a9d4f5');
+	}
+
+	private endSlowMotion() {
+		this.slowMotionUntil = 0;
+		this.applyGameSpeed(1);
+		EventBus.emit(ChessEvents.slowMotion, false);
+		this.flashMessage('BACK TO SPEED', '#8fa8c8');
 	}
 
 	private resetRunState() {
@@ -211,6 +252,10 @@ export class Game extends Scene {
 		this.controlUntil = 0;
 		this.dropThroughUntil = 0;
 		this.simNow = 0;
+		this.lastDrawWarningAt = -Infinity;
+		this.slowCharge = 0;
+		this.slowMotionUntil = 0;
+		this.applyGameSpeed(1);
 		this.stage = stageForLevel(0);
 		this.score = 0;
 		this.cleanLevelStreak = 0;
@@ -462,6 +507,8 @@ export class Game extends Scene {
 			down: this.input.keyboard!.addKey(Key.S),
 			jump: this.input.keyboard!.addKey(Key.SPACE)
 		};
+		// Shift spends the slow-motion charge.
+		this.slowKey = this.input.keyboard!.addKey(Key.SHIFT);
 	}
 
 	/**
@@ -500,6 +547,14 @@ export class Game extends Scene {
 
 			this.onEndlessGameFinished(detail.result === 1);
 		};
+		const onDrawRisk = (risk: { kind: string; message: string }) => {
+			// Throttled: a repetitive sequence would otherwise warn every move.
+			if (this.simNow - this.lastDrawWarningAt < 6000) return;
+			this.lastDrawWarningAt = this.simNow;
+			this.flashMessage(risk.message.toUpperCase(), '#e0b0d8');
+		};
+		EventBus.on(ChessEvents.drawRisk, onDrawRisk);
+
 		const onEnPassant = () => {
 			const cleared = this.field.clearVisibleSpikes(this.cameras.main);
 			if (cleared > 0) {
@@ -520,6 +575,7 @@ export class Game extends Scene {
 		this.events.once('shutdown', () => {
 			EventBus.off(ChessEvents.gameOver, onGameOver);
 			EventBus.off(ChessEvents.enPassant, onEnPassant);
+			EventBus.off(ChessEvents.drawRisk, onDrawRisk);
 			unsubscribe();
 		});
 	}
@@ -623,6 +679,9 @@ export class Game extends Scene {
 		const onGround = this.player.body.blocked.down || this.player.body.touching.down;
 		if (onGround) this.hasDoubleJumped = false;
 
+		if (Phaser.Input.Keyboard.JustDown(this.slowKey)) this.triggerSlowMotion();
+		if (this.slowMotionUntil !== 0 && !this.slowMotionActive) this.endSlowMotion();
+
 		this.updateDropThrough();
 		this.updateDirectControl(onGround);
 		this.updateAnimation(onGround);
@@ -708,6 +767,13 @@ export class Game extends Scene {
 			this.score += this.stage.pointsPerLevel * this.comboMultiplier;
 			this.cleanLevelStreak += 1;
 			this.advanceCombo();
+		}
+
+		// Climbing is what charges the ability.
+		const wasReady = this.slowCharge >= SLOWMO_MIN_CHARGE;
+		this.slowCharge = Math.min(1, this.slowCharge + gained * SLOWMO_CHARGE_PER_BAND);
+		if (!wasReady && this.slowCharge >= SLOWMO_MIN_CHARGE && !this.slowMotionActive) {
+			this.flashMessage('SLOW MOTION READY — SHIFT', '#a9d4f5');
 		}
 
 		this.stage = stageForLevel(this.maxLevel);
@@ -959,6 +1025,32 @@ export class Game extends Scene {
 			.setScrollFactor(0)
 			.setVisible(false);
 
+		// Slow-motion charge, right-aligned on the transient row.
+		this.slowLabel = this.add
+			.text(innerRight, belowY - 11, '', {
+				fontFamily: FONT_BODY,
+				fontSize: '13px',
+				color: '#a9d4f5',
+				stroke: '#140d06',
+				strokeThickness: 3
+			})
+			.setOrigin(1, 0.5)
+			.setDepth(50)
+			.setScrollFactor(0);
+
+		this.slowBarBg = this.add
+			.rectangle(innerRight, belowY + 10, this.slowBarWidth + 6, 13, PALETTE.oak, 0.9)
+			.setOrigin(1, 0.5)
+			.setStrokeStyle(1, 0x6f9fd8, 0.8)
+			.setDepth(49)
+			.setScrollFactor(0);
+
+		this.slowBar = this.add
+			.rectangle(innerRight - this.slowBarWidth - 3, belowY + 10, 0, 9, 0x9ecbf0, 1)
+			.setOrigin(0, 0.5)
+			.setDepth(50)
+			.setScrollFactor(0);
+
 		this.hudBottom = belowY + 24;
 	}
 
@@ -1005,6 +1097,23 @@ export class Game extends Scene {
 
 		this.gamesWonText?.setText(`${this.gamesWon}`);
 		this.tierText?.setText(tierLabel(this.tier));
+
+		if (this.slowMotionActive) {
+			const left = (this.slowMotionUntil - this.simNow) / 1000;
+			this.slowLabel.setText(`SLOW MOTION  ${left.toFixed(1)}s`);
+			this.slowBar.width = this.slowBarWidth * Phaser.Math.Clamp(
+				(this.slowMotionUntil - this.simNow) / (SLOWMO_DURATION_MS * SLOWMO_FACTOR),
+				0,
+				1
+			);
+			this.slowBar.setFillStyle(0x6f9fd8, 1);
+		} else {
+			const ready = this.slowCharge >= SLOWMO_MIN_CHARGE;
+			this.slowLabel.setText(ready ? 'SLOW MOTION — SHIFT' : 'CHARGING');
+			this.slowLabel.setColor(ready ? '#a9d4f5' : '#7d8ea3');
+			this.slowBar.width = this.slowBarWidth * this.slowCharge;
+			this.slowBar.setFillStyle(ready ? 0x9ecbf0 : 0x5d7285, 1);
+		}
 
 		const remaining = Math.max(0, this.controlUntil - this.simNow);
 		const show = remaining > 0;

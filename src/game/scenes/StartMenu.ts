@@ -3,7 +3,6 @@ import { get } from 'svelte/store';
 import { ChessEvents, EventBus } from '../EventBus';
 import { TOTAL_FLOORS } from '../levels';
 import { towerProgress } from '$lib/stores/progress';
-import { settings, speedLabel } from '$lib/stores/settings';
 import {
 	Column,
 	FONT_BODY,
@@ -20,7 +19,8 @@ const CONTROLS = [
 	'captures lift you — the bigger the piece, the higher the leap',
 	'files steer left and right  ·  space brakes you to a stop',
 	'↓ or S drops through a wooden plank, never through stone',
-	'gold runes grant 5s of ← → / A D control and jumps, stacking to 10s'
+	'gold runes grant 5s of ← → / A D control and jumps, stacking to 10s',
+	'climbing charges slow-motion — spend it with shift to slow the whole tower'
 ];
 
 /**
@@ -133,7 +133,7 @@ export class StartMenu extends Scene {
 				18
 			)
 			.add(56, (y) =>
-				ornateButton(this, centerX, y, `Settings  ·  ${speedLabel(get(settings).gameSpeed)}`, () => this.scene.start('Settings'), {
+				ornateButton(this, centerX, y, 'Settings', () => this.scene.start('Settings'), {
 					fill: PALETTE.oakLight,
 					fillHover: PALETTE.oak,
 					width: buttonWidth,

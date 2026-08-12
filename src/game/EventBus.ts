@@ -15,6 +15,10 @@ export const ChessEvents = {
 	/** Stage reward: put the most recently lost piece back on the board. */
 	restorePiece: 'chess:restore-piece',
 	resetBoard: 'chess:reset-board',
+	/** The game is drifting towards a draw, while it can still be avoided. */
+	drawRisk: 'chess:draw-risk',
+	/** Enter or leave slow-motion on the board (stretches the player's move). */
+	slowMotion: 'chess:slow-motion',
 	gameOver: 'chess:game-over'
 } as const;
 

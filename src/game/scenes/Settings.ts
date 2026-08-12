@@ -21,10 +21,10 @@ import {
 /**
  * Player settings.
  *
- * Game speed is a permanent slow-motion rather than a pause or a one-off effect:
- * whatever is chosen here applies to every run until it is changed. It scales
- * the simulation rather than the visuals alone, so the climb plays out exactly
- * as it would at full speed, only stretched in real time.
+ * Game speed is the pace a MULTIPLAYER match runs at — both players share it, so
+ * this is the value carried into the lobby rather than something applied to your
+ * own game. Single player deliberately has no speed setting: slow-motion there
+ * is charged by climbing and spent with Shift, so it costs altitude.
  */
 export class Settings extends Scene {
 	private speedButton!: ReturnType<typeof ornateButton>;
@@ -71,7 +71,7 @@ export class Settings extends Scene {
 			.setOrigin(0.5);
 
 		this.add
-			.text(centerX, y - height / 2 + 56, 'Permanent slow-motion. Balance is unchanged.', {
+			.text(centerX, y - height / 2 + 56, 'Multiplayer matches only — solo play earns slow-motion instead.', {
 				fontFamily: FONT_BODY,
 				fontSize: 13,
 				color: INK_SOFT

@@ -29,3 +29,17 @@ export const CONTROL_DOUBLE_JUMP_VELOCITY = -500;
 /** Clean levels per combo step, and the ceiling. */
 export const LEVELS_PER_COMBO_STEP = 5;
 export const MAX_COMBO_MULTIPLIER = 4;
+
+/**
+ * Slow-motion is an earned ability, not a setting: it charges as you climb and
+ * is spent to buy thinking time. Because it also stretches how long your chess
+ * move takes to resolve, it is genuinely a trade — the lava keeps rising in
+ * simulated time, so a long slow-motion costs you altitude.
+ */
+export const SLOWMO_FACTOR = 0.35;
+/** Charge earned per platform band climbed, as a fraction of a full meter. */
+export const SLOWMO_CHARGE_PER_BAND = 0.055;
+/** Full meter lasts this long in real seconds when spent in one go. */
+export const SLOWMO_DURATION_MS = 6000;
+/** Minimum charge before it can be triggered at all. */
+export const SLOWMO_MIN_CHARGE = 0.35;
