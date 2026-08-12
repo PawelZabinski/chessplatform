@@ -3,6 +3,7 @@ import { get } from 'svelte/store';
 import { ChessEvents, EventBus } from '../EventBus';
 import { TOTAL_FLOORS } from '../levels';
 import { towerProgress } from '$lib/stores/progress';
+import { settings, speedLabel } from '$lib/stores/settings';
 import {
 	Column,
 	FONT_BODY,
@@ -121,11 +122,23 @@ export class StartMenu extends Scene {
 					),
 				24
 			)
-			.add(62, (y) =>
-				ornateButton(this, centerX, y, 'Hall of Champions', () => this.scene.start('Leaderboard'), {
-					fill: PALETTE.crimson,
-					fillHover: PALETTE.crimsonLight,
-					width: buttonWidth
+			.add(
+				62,
+				(y) =>
+					ornateButton(this, centerX, y, 'Hall of Champions', () => this.scene.start('Leaderboard'), {
+						fill: PALETTE.crimson,
+						fillHover: PALETTE.crimsonLight,
+						width: buttonWidth
+					}),
+				18
+			)
+			.add(56, (y) =>
+				ornateButton(this, centerX, y, `Settings  ·  ${speedLabel(get(settings).gameSpeed)}`, () => this.scene.start('Settings'), {
+					fill: PALETTE.oakLight,
+					fillHover: PALETTE.oak,
+					width: buttonWidth,
+					height: 56,
+					fontSize: 22
 				})
 			)
 			.flush(40, plaqueTop - 28);

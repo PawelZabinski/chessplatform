@@ -79,7 +79,7 @@ export class MultiplayerLobby extends Scene {
 			.setOrigin(0.5);
 
 		this.add
-			.text(centerX, y - height / 2 + 58, `Target height: ${DEFAULT_MATCH_CONFIG.targetHeight} bands  ·  set before the match`, {
+			.text(centerX, y - height / 2 + 58, `${DEFAULT_MATCH_CONFIG.moveCooldownMs / 1000}s move cooldown  ·  target height ${DEFAULT_MATCH_CONFIG.targetHeight} bands  ·  both set before the match`, {
 				fontFamily: FONT_BODY,
 				fontSize: 13,
 				color: INK_SOFT
@@ -124,7 +124,8 @@ export class MultiplayerLobby extends Scene {
 }
 
 const RULES = [
-	'Both climbers race the same tower, each driven by their own board.',
-	'Win a game and you are flung far up — then a fresh game is dealt, skewed in your rival’s favour so they can fight back.',
+	'Both climbers race the same tower on the same board — and nobody waits their turn.',
+	'Play a move, wait out your one-second cooldown, play the next. Speed counts as much as accuracy.',
+	'Win a game and you are flung far up, then a fresh game is dealt skewed in your rival’s favour so they can fight back.',
 	'Win twice in a row and you are thrown to the very top: the match is yours.'
 ].join('\n');

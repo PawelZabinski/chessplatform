@@ -1,6 +1,7 @@
 import { Scene } from 'phaser';
 import { ChessEvents, EventBus } from '../EventBus';
 import { chessState, moves } from '$lib/stores/chess';
+import { settings } from '$lib/stores/settings';
 import {
 	CONTROL_DURATION_MS,
 	CONTROL_DOUBLE_JUMP_VELOCITY,
@@ -95,6 +96,19 @@ export class Game extends Scene {
 
 	private controlUntil = 0;
 
+	/**
+	 * Permanent slow-motion. Scales the whole simulation, not just visuals, so
+	 * balance is untouched: a capture still lifts you the same number of bands,
+	 * it just takes longer in real seconds.
+	 */
+	private gameSpeed = 1;
+	/**
+	 * Simulated milliseconds elapsed. Phaser's clock keeps running in real time
+	 * regardless of timeScale, so anything measured in game time (the rune timer,
+	 * the drop-through window) has to be tracked against this instead.
+	 */
+	private simNow = 0;
+
 	private scoreValueText!: Phaser.GameObjects.Text;
 	private stageValueText!: Phaser.GameObjects.Text;
 	private stageProgressBar!: Phaser.GameObjects.Rectangle;
@@ -134,6 +148,7 @@ export class Game extends Scene {
 		this.worldWidth = this.scale.width;
 		this.worldHeight = this.scale.height;
 
+		this.applyGameSpeed();
 		this.resetRunState();
 		this.theme = this.themeForLevel(0);
 		this.createAnimations();
@@ -170,6 +185,22 @@ export class Game extends Scene {
 		EventBus.emit('current-scene-ready', this);
 	}
 
+	/**
+	 * Reads the player's speed setting and slows the whole scene to match.
+	 *
+	 * Arcade physics reads timeScale inversely — larger means slower — while
+	 * tweens and animations take the fraction directly. Our own systems are fed a
+	 * scaled delta in update(), which covers the lava and the climb.
+	 */
+	private applyGameSpeed() {
+		this.gameSpeed = settings.current().gameSpeed;
+
+		this.physics.world.timeScale = 1 / this.gameSpeed;
+		this.tweens.timeScale = this.gameSpeed;
+		this.time.timeScale = this.gameSpeed;
+		this.anims.globalTimeScale = this.gameSpeed;
+	}
+
 	private resetRunState() {
 		this.currentLevel = 0;
 		this.maxLevel = 0;
@@ -179,6 +210,7 @@ export class Game extends Scene {
 		this.runEnded = false;
 		this.controlUntil = 0;
 		this.dropThroughUntil = 0;
+		this.simNow = 0;
 		this.stage = stageForLevel(0);
 		this.score = 0;
 		this.cleanLevelStreak = 0;
@@ -408,7 +440,7 @@ export class Game extends Scene {
 				if (plat.getData('blocked') === true) return true;
 
 				// Holding down drops the player through wooden planks only.
-				if (this.time.now < this.dropThroughUntil) return false;
+				if (this.simNow < this.dropThroughUntil) return false;
 
 				// Otherwise pass-through: only land when falling onto the top face.
 				return p.body.velocity.y >= 0 && p.body.bottom <= plat.body.top + 10;
@@ -446,7 +478,7 @@ export class Game extends Scene {
 		const onGround = this.player.body.blocked.down || this.player.body.touching.down;
 		if (!onGround) return;
 
-		this.dropThroughUntil = this.time.now + 260;
+		this.dropThroughUntil = this.simNow + 260;
 		// A small nudge so the player actually separates from the platform.
 		this.player.setVelocityY(Math.max(this.player.body.velocity.y, 70));
 	}
@@ -560,10 +592,10 @@ export class Game extends Scene {
 	private onRunePickup(_player: unknown, rune: unknown) {
 		(rune as Phaser.Physics.Arcade.Sprite).destroy();
 
-		const remaining = Math.max(0, this.controlUntil - this.time.now);
+		const remaining = Math.max(0, this.controlUntil - this.simNow);
 		const banked = Math.min(remaining + CONTROL_DURATION_MS, CONTROL_MAX_MS);
 		const gained = banked - remaining;
-		this.controlUntil = this.time.now + banked;
+		this.controlUntil = this.simNow + banked;
 
 		const seconds = (banked / 1000).toFixed(0);
 		const label =
@@ -578,11 +610,15 @@ export class Game extends Scene {
 	}
 
 	private isControlActive() {
-		return this.controlUntil > this.time.now;
+		return this.controlUntil > this.simNow;
 	}
 
 	update(_time: number, delta: number) {
 		if (this.runEnded) return;
+
+		// Everything downstream works in simulated time.
+		const dt = delta * this.gameSpeed;
+		this.simNow += dt;
 
 		const onGround = this.player.body.blocked.down || this.player.body.touching.down;
 		if (onGround) this.hasDoubleJumped = false;
@@ -593,7 +629,7 @@ export class Game extends Scene {
 		this.updateClimb();
 		this.updateSky();
 
-		if (this.lava.update(delta, this.player.y)) {
+		if (this.lava.update(dt, this.player.y)) {
 			this.cameras.main.shake(400, 0.01);
 			this.endRun('The lava took you.', 0);
 			return;
@@ -970,7 +1006,7 @@ export class Game extends Scene {
 		this.gamesWonText?.setText(`${this.gamesWon}`);
 		this.tierText?.setText(tierLabel(this.tier));
 
-		const remaining = Math.max(0, this.controlUntil - this.time.now);
+		const remaining = Math.max(0, this.controlUntil - this.simNow);
 		const show = remaining > 0;
 		this.controlLabel.setVisible(show);
 		this.controlBarBg.setVisible(show);

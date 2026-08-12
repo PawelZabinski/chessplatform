@@ -6,6 +6,7 @@ import { Preloader } from './scenes/Preloader';
 import { StartMenu } from './scenes/StartMenu';
 import { LevelSelect } from './scenes/LevelSelect';
 import { MultiplayerLobby } from './scenes/MultiplayerLobby';
+import { Settings } from './scenes/Settings';
 import { Leaderboard } from './scenes/Leaderboard';
 
 // Find out more information about the Game Config at:
@@ -27,6 +28,7 @@ const config: Phaser.Types.Core.GameConfig = {
         StartMenu,
         LevelSelect,
         MultiplayerLobby,
+        Settings,
         Leaderboard,
         MainGame,
         GameOver

@@ -21,6 +21,42 @@
  *     player who is behind is not buried: they get a materially better position
  *     each time they lose, so the match stays live. See HandicapLadder below.
  *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * REAL-TIME CHESS — THE MOVE COOLDOWN
+ *
+ * Multiplayer is NOT turn-based. Neither player ever waits for the other.
+ *
+ * Each player has their own cooldown (MatchConfig.moveCooldownMs, default 1000).
+ * You play a move, wait out your cooldown, play the next — regardless of whether
+ * your opponent has replied. Both sides act on the same board simultaneously,
+ * so the game is decided as much by speed as by accuracy. It is very rapid
+ * chess, closer to a real-time strategy game than to blitz.
+ *
+ * Consequences the implementation has to respect:
+ *
+ *  - MOVE ORDER IS DECIDED BY THE SERVER, by arrival time. Two moves can be in
+ *    flight at once; whichever lands first is applied, and the second is
+ *    re-validated against the resulting position. A move that has become illegal
+ *    is rejected with ServerError 'badMove' and the client resyncs from the FEN
+ *    in the rejection. Clients must therefore treat their own move as pending
+ *    until MoveApplied confirms it — optimistic local application is fine for
+ *    animation, but the server's FEN always wins.
+ *  - chess.js turn order cannot be used to gate input, because "whose turn it is"
+ *    stops being meaningful. The server validates a move as legal-for-that-colour
+ *    in the current position, and enforces the cooldown per player.
+ *  - The cooldown is enforced SERVER-SIDE (a client-side timer alone is trivially
+ *    bypassed). The client shows its own cooldown as a sweep on the board so the
+ *    player can time the next move; the server rejects anything early with the
+ *    remaining milliseconds so the two stay in step.
+ *  - A player who is checkmated does not end the match — that is a game result,
+ *    which triggers the fling and the re-deal as above.
+ *
+ * Interaction with game speed: MatchConfig.gameSpeed is shared by both clients
+ * and set by the host. Player-local slow-motion (src/lib/stores/settings.ts) must
+ * be IGNORED in multiplayer — in a real-time race, a player running at 0.35x
+ * would get nearly three times the thinking time per simulated second, which is
+ * decisive. The lobby should say so plainly when a guest has a non-default speed.
+ *
  * ENDING A MATCH — three ways:
  *
  *  a. Someone reaches the top of the tower. The height that counts as "the top"
@@ -83,6 +119,17 @@ export interface MatchConfig {
 	targetHeight: number;
 	/** Consecutive wins that fling a player to the top instantly. Default 2. */
 	winStreakForInstantWin: number;
+	/**
+	 * Per-player cooldown between their own moves, in milliseconds. This is what
+	 * makes the mode real-time: you wait out your own cooldown, never your
+	 * opponent. Enforced server-side.
+	 */
+	moveCooldownMs: number;
+	/**
+	 * Simulation speed for the match, set by the host and shared by both clients.
+	 * Player-local slow-motion is ignored in multiplayer — see the note above.
+	 */
+	gameSpeed: number;
 	/** Lava rise rate, shared by both climbers so the pressure is symmetric. */
 	lavaSpeed: number;
 	handicap: HandicapLadder;
@@ -114,6 +161,12 @@ export interface MoveIntent {
 	lan: string;
 	/** Server rejects moves for a game the client is no longer on. */
 	gameIndex: number;
+	/**
+	 * Position the client believed it was moving in. The server uses this to spot
+	 * a move authored against a board that has since changed under it — the
+	 * normal case when both players move at once.
+	 */
+	expectedFen: string;
 }
 
 /** Periodic, low-frequency height report. Advisory: the server clamps it. */
@@ -207,8 +260,12 @@ export interface MatchSnapshot {
 
 export interface ServerError {
 	t: 'error';
-	code: 'lobbyFull' | 'badMove' | 'notYourTurn' | 'notHost' | 'unknownLobby';
+	code: 'lobbyFull' | 'badMove' | 'cooldown' | 'notHost' | 'unknownLobby';
 	message: string;
+	/** Authoritative position to resync to, sent with 'badMove'. */
+	fen?: string;
+	/** Milliseconds still to wait, sent with 'cooldown'. */
+	retryInMs?: number;
 }
 
 export type ServerMessage =
@@ -228,6 +285,8 @@ export type ServerMessage =
 export const DEFAULT_MATCH_CONFIG: MatchConfig = {
 	targetHeight: 120,
 	winStreakForInstantWin: 2,
+	moveCooldownMs: 1000,
+	gameSpeed: 1,
 	lavaSpeed: 12,
 	handicap: {
 		level: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
@@ -263,4 +322,10 @@ export const DEFAULT_MATCH_CONFIG: MatchConfig = {
  *
  * - Suggested server: a small Node process holding matches in memory. Chess
  *   validation is chess.js, the same library the client uses.
+ *
+ * - The move cooldown needs a small UI: a sweep or shrinking ring on the board
+ *   while it runs. BoardController already gates input through the dests map, so
+ *   the cleanest hook is to clear dests for the duration and restore them when
+ *   the cooldown expires — the same mechanism that stops you moving the
+ *   opponent's pieces.
  */
