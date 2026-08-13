@@ -117,7 +117,12 @@ export class BoardController {
 				showDests: true,
 				events: { after: (orig, dest) => this.onUserMove(orig, dest) }
 			},
-			draggable: { enabled: true, showGhost: true }
+			draggable: { enabled: true, showGhost: true },
+			// chessground's shape-drawing tool (shift-drag / right-drag to annotate
+			// with arrows and circles) is a study aid. In a game this fast it just
+			// swallows drags that were meant to be moves, and shift is the
+			// slow-motion key besides.
+			drawable: { enabled: false, visible: false }
 		});
 	}
 

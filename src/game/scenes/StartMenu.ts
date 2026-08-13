@@ -116,7 +116,7 @@ export class StartMenu extends Scene {
 						this,
 						centerX,
 						y,
-						'Two Climbers  ·  Soon',
+						'Two Climbers',
 						() => this.scene.start('MultiplayerLobby'),
 						{ fill: PALETTE.oakLight, fillHover: PALETTE.oak, width: buttonWidth, fontSize: 24 }
 					),
@@ -129,17 +129,7 @@ export class StartMenu extends Scene {
 						fill: PALETTE.crimson,
 						fillHover: PALETTE.crimsonLight,
 						width: buttonWidth
-					}),
-				18
-			)
-			.add(56, (y) =>
-				ornateButton(this, centerX, y, 'Settings', () => this.scene.start('Settings'), {
-					fill: PALETTE.oakLight,
-					fillHover: PALETTE.oak,
-					width: buttonWidth,
-					height: 56,
-					fontSize: 22
-				})
+					})
 			)
 			.flush(40, plaqueTop - 28);
 
