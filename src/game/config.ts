@@ -32,7 +32,7 @@ export const MAX_COMBO_MULTIPLIER = 4;
 
 /**
  * Slow-motion is an earned ability, not a setting: it charges as you climb and
- * is spent to buy thinking time. Because it also stretches how long your chess
+ * is spent (with Q) to buy thinking time. Because it also stretches how long your chess
  * move takes to resolve, it is genuinely a trade — the lava keeps rising in
  * simulated time, so a long slow-motion costs you altitude.
  */

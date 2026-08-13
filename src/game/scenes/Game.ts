@@ -507,8 +507,10 @@ export class Game extends Scene {
 			down: this.input.keyboard!.addKey(Key.S),
 			jump: this.input.keyboard!.addKey(Key.SPACE)
 		};
-		// Shift spends the slow-motion charge.
-		this.slowKey = this.input.keyboard!.addKey(Key.SHIFT);
+		// Q spends the slow-motion charge. Deliberately not shift: the board is a
+		// DOM element outside the canvas, and a shift held over it used to be
+		// doing double duty as both a board gesture and a game input.
+		this.slowKey = this.input.keyboard!.addKey(Key.Q);
 	}
 
 	/**
@@ -773,7 +775,7 @@ export class Game extends Scene {
 		const wasReady = this.slowCharge >= SLOWMO_MIN_CHARGE;
 		this.slowCharge = Math.min(1, this.slowCharge + gained * SLOWMO_CHARGE_PER_BAND);
 		if (!wasReady && this.slowCharge >= SLOWMO_MIN_CHARGE && !this.slowMotionActive) {
-			this.flashMessage('SLOW MOTION READY — SHIFT', '#a9d4f5');
+			this.flashMessage('SLOW MOTION READY — Q', '#a9d4f5');
 		}
 
 		this.stage = stageForLevel(this.maxLevel);
@@ -1109,7 +1111,7 @@ export class Game extends Scene {
 			this.slowBar.setFillStyle(0x6f9fd8, 1);
 		} else {
 			const ready = this.slowCharge >= SLOWMO_MIN_CHARGE;
-			this.slowLabel.setText(ready ? 'SLOW MOTION — SHIFT' : 'CHARGING');
+			this.slowLabel.setText(ready ? 'SLOW MOTION — Q' : 'CHARGING');
 			this.slowLabel.setColor(ready ? '#a9d4f5' : '#7d8ea3');
 			this.slowBar.width = this.slowBarWidth * this.slowCharge;
 			this.slowBar.setFillStyle(ready ? 0x9ecbf0 : 0x5d7285, 1);

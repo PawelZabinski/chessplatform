@@ -20,7 +20,7 @@ const CONTROLS = [
 	'files steer left and right  ·  space brakes you to a stop',
 	'↓ or S drops through a wooden plank, never through stone',
 	'gold runes grant 5s of ← → / A D control and jumps, stacking to 10s',
-	'climbing charges slow-motion — spend it with shift to slow the whole tower'
+	'climbing charges slow-motion — press Q to slow the whole tower'
 ];
 
 /**

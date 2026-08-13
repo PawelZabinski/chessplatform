@@ -100,6 +100,10 @@ export class BoardController {
 	private slowMotion = false;
 	private pendingReply?: ReturnType<typeof setTimeout>;
 
+	/** Capture-phase listener that strips shift from board mousedowns. */
+	private shiftDragFix?: (event: MouseEvent) => void;
+	private shiftDragTarget?: HTMLElement;
+
 	constructor(element: HTMLElement, callbacks: BoardCallbacks = {}) {
 		this.callbacks = callbacks;
 		this.chess.load(START_FEN);
@@ -119,11 +123,58 @@ export class BoardController {
 			},
 			draggable: { enabled: true, showGhost: true },
 			// chessground's shape-drawing tool (shift-drag / right-drag to annotate
-			// with arrows and circles) is a study aid. In a game this fast it just
-			// swallows drags that were meant to be moves, and shift is the
-			// slow-motion key besides.
+			// with arrows and circles) is a study aid, not something a game this
+			// fast wants.
 			drawable: { enabled: false, visible: false }
 		});
+
+		this.allowShiftDrag(element);
+	}
+
+	/**
+	 * Lets a shift-held drag move a piece.
+	 *
+	 * chessground routes the gesture at mousedown: if shift (or right button) is
+	 * held it branches to *draw* and, when drawing is disabled, does nothing at
+	 * all — it never falls through to dragging. The board therefore goes
+	 * completely inert while shift is down, which is baffling rather than
+	 * harmless.
+	 *
+	 * Rather than fork the library, the modifier is stripped before it gets
+	 * there: a capture-phase listener on the container fires ahead of
+	 * chessground's own, swallows the shifted event and re-dispatches an
+	 * identical one without the modifier. Only mousedown needs this — the
+	 * subsequent move/end handlers check whether a drag is already in progress
+	 * rather than re-reading the modifier.
+	 */
+	private allowShiftDrag(element: HTMLElement) {
+		this.shiftDragFix = (event: MouseEvent) => {
+			if (!event.shiftKey || event.button !== 0) return;
+
+			// Re-dispatch on the ORIGINAL target, not the container: chessground
+			// binds its listener to the inner <cg-board>, so an event sent to the
+			// wrapper would bubble upward and never reach it.
+			const target = (event.target as HTMLElement | null) ?? element;
+
+			event.stopImmediatePropagation();
+			event.preventDefault();
+
+			target.dispatchEvent(
+				new MouseEvent(event.type, {
+					bubbles: true,
+					cancelable: true,
+					view: window,
+					clientX: event.clientX,
+					clientY: event.clientY,
+					button: event.button,
+					buttons: event.buttons,
+					shiftKey: false
+				})
+			);
+		};
+
+		element.addEventListener('mousedown', this.shiftDragFix, { capture: true });
+		this.shiftDragTarget = element;
 	}
 
 	setOpponent(provider: MoveProvider | undefined) {
@@ -418,6 +469,9 @@ export class BoardController {
 	}
 
 	destroy() {
+		if (this.shiftDragFix && this.shiftDragTarget) {
+			this.shiftDragTarget.removeEventListener('mousedown', this.shiftDragFix, { capture: true });
+		}
 		clearTimeout(this.pendingReply);
 		this.opponent?.abort?.();
 		this.ground.destroy();
