@@ -32,7 +32,7 @@ export class Lava {
 
 	constructor(
 		private readonly scene: Phaser.Scene,
-		private readonly worldWidth: number,
+		private worldWidth: number,
 		worldHeight: number,
 		/** Base rise rate in px/s. 0 disables the lava entirely. */
 		private readonly speed: number
@@ -94,6 +94,19 @@ export class Lava {
 			.setDepth(60)
 			.setScrollFactor(0)
 			.setAlpha(0);
+	}
+
+	/** Re-stretches the lava across a new viewport width after a resize. */
+	resize(width: number) {
+		if (this.speed <= 0) return;
+		this.worldWidth = width;
+
+		this.body.setSize(width, 60000).setPosition(width / 2, this.surfaceY);
+		this.surface.setSize(width, 26).setPosition(width / 2, this.surfaceY + 10);
+		this.crust.setSize(width, 5).setPosition(width / 2, this.surfaceY);
+		this.glow.setSize(width, 52).setPosition(width / 2, this.surfaceY - 26);
+		this.warning.setX(width / 2);
+		this.warning.setWordWrapWidth(Math.max(160, width - 48));
 	}
 
 	get isActive() {

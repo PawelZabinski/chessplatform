@@ -15,9 +15,14 @@ const config: Phaser.Types.Core.GameConfig = {
     pixelArt: true,
     scale: {
         // RESIZE makes the canvas track its container, so the game fills the
-        // column beside the board instead of being letterboxed inside it.
+        // space beside (or above) the board rather than being letterboxed, and
+        // follows orientation changes on a phone.
         mode: Phaser.Scale.RESIZE,
         autoCenter: Phaser.Scale.CENTER_BOTH
+    },
+    input: {
+        // Phones and tablets: the platformer is driven by on-screen controls.
+        activePointers: 3
     },
     parent: 'game-container',
     backgroundColor: '#0b0704',

@@ -142,6 +142,15 @@ export class Game extends Scene {
 	/** Y below which transient overlays may draw without hitting the HUD. */
 	private hudBottom = 140;
 
+	/**
+	 * Everything pinned to the viewport lives here, so a resize can rebuild the
+	 * whole HUD in one go rather than repositioning each piece.
+	 */
+	private hudLayer!: Phaser.GameObjects.Container;
+	/** On-screen controls, built only when the device is touch-driven. */
+	private touchLayer?: Phaser.GameObjects.Container;
+	private touchState = { left: false, right: false, jump: false, down: false };
+
 	constructor() {
 		super('Game');
 	}
@@ -192,6 +201,11 @@ export class Game extends Scene {
 
 		this.createInput();
 		this.buildHud();
+		this.buildTouchControls();
+
+		// Orientation changes and window resizes must not leave the HUD stranded.
+		this.scale.on('resize', this.onResize, this);
+		this.events.once('shutdown', () => this.scale.off('resize', this.onResize, this));
 
 		if (this.towerFloor) {
 			this.startTowerFloor(this.towerFloor);
@@ -526,7 +540,8 @@ export class Game extends Scene {
 	private updateDropThrough() {
 		const pressed =
 			Phaser.Input.Keyboard.JustDown(this.cursors.down) ||
-			Phaser.Input.Keyboard.JustDown(this.wasd.down);
+			Phaser.Input.Keyboard.JustDown(this.wasd.down) ||
+			this.consumeTouchDown();
 		if (!pressed) return;
 
 		const onGround = this.player.body.blocked.down || this.player.body.touching.down;
@@ -726,7 +741,8 @@ export class Game extends Scene {
 		const jumped =
 			Phaser.Input.Keyboard.JustDown(this.cursors.up) ||
 			Phaser.Input.Keyboard.JustDown(this.wasd.up) ||
-			Phaser.Input.Keyboard.JustDown(this.wasd.jump);
+			Phaser.Input.Keyboard.JustDown(this.wasd.jump) ||
+			this.consumeTouchJump();
 
 		if (jumped) {
 			if (onGround) {
@@ -738,8 +754,8 @@ export class Game extends Scene {
 			}
 		}
 
-		const left = this.cursors.left.isDown || this.wasd.left.isDown;
-		const right = this.cursors.right.isDown || this.wasd.right.isDown;
+		const left = this.cursors.left.isDown || this.wasd.left.isDown || this.touchState.left;
+		const right = this.cursors.right.isDown || this.wasd.right.isDown || this.touchState.right;
 
 		if (left && !right) {
 			this.player.setVelocityX(-CONTROL_RUN_SPEED);
@@ -873,7 +889,45 @@ export class Game extends Scene {
 	// the two transient readouts (combo, control timer) sit on their own row
 	// underneath instead of hanging off the sides.
 
+	/**
+	 * Rebuilds everything that is pinned to the viewport at the new size.
+	 *
+	 * Only the HUD and the backdrop are rebuilt; platforms keep the world
+	 * coordinates they were generated at, so an orientation change mid-climb
+	 * shifts the framing without disturbing the run.
+	 */
+	private onResize(size: Phaser.Structs.Size) {
+		if (this.runEnded) return;
+
+		const width = Math.round(size.width);
+		const height = Math.round(size.height);
+		if (width < 2 || height < 2) return;
+		if (width === this.worldWidth && height === this.worldHeight) return;
+
+		this.worldWidth = width;
+		this.worldHeight = height;
+
+		this.skyBackdrop.setDisplaySize(width, height);
+		this.skyFade.setDisplaySize(width, height);
+		this.starLayer.setSize(width, height);
+		this.skyline.setSize(width, 180);
+		this.leftWall.setSize(96, height);
+		this.rightWall.setSize(96, height).setPosition(width - 96, 0);
+		this.lava.resize(width);
+
+		this.cameras.main.setBounds(0, -10e6, width, 10e6 + height);
+		this.physics.world.setBounds(0, -10e6, width, 10e6 + height + 400);
+
+		this.buildHud();
+		this.buildTouchControls();
+	}
+
 	private buildHud() {
+		this.hudLayer?.destroy(true);
+		// Everything created below is swept into the layer at the end, so a
+		// rebuild disposes of the previous HUD wholesale.
+		const firstIndex = this.children.list.length;
+
 		const margin = 22;
 		const barX = margin;
 		const barY = 16;
@@ -1062,6 +1116,10 @@ export class Game extends Scene {
 			.setScrollFactor(0);
 
 		this.hudBottom = belowY + 24;
+
+		const created = this.children.list.slice(firstIndex);
+		this.hudLayer = this.add.container(0, 0).setDepth(44).setScrollFactor(0);
+		this.hudLayer.add(created);
 	}
 
 	/**

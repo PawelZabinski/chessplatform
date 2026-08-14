@@ -50,10 +50,13 @@
 <div id="game-container"></div>
 
 <style>
-    /* Phaser's RESIZE scale mode sizes the canvas to this element. */
+    /* Phaser's RESIZE scale mode sizes the canvas to this element, so it must
+       fill its flex slot exactly — 100vh would overflow the stacked mobile
+       layout, where the climb only gets part of the screen. */
     #game-container {
         width: 100%;
-        height: 100vh;
+        height: 100%;
+        min-height: 0;
         overflow: hidden;
     }
 
