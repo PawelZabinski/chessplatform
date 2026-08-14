@@ -54,6 +54,11 @@ export interface RunOutcome {
 	gamesWon: number;
 	/** Endless: engine strength reached. */
 	tier: number;
+	/**
+	 * The player left of their own accord. A tower floor abandoned this way must
+	 * not be recorded as cleared, however far up the climb got.
+	 */
+	abandoned?: boolean;
 }
 
 export class Game extends Scene {
@@ -820,7 +825,7 @@ export class Game extends Scene {
 		this.time.delayedCall(600, () => this.flashMessage(`+${bonus} STAGE BONUS`, '#7dd3a0'));
 	}
 
-	private endRun(reason: string, result: number) {
+	private endRun(reason: string, result: number, abandoned = false) {
 		if (this.runEnded) return;
 		this.runEnded = true;
 
@@ -839,7 +844,8 @@ export class Game extends Scene {
 			stagesCleared: this.stagesCleared,
 			movesPlayed: this.totalMovesPlayed + chessState.moveCount(),
 			gamesWon: this.gamesWon,
-			tier: this.tier
+			tier: this.tier,
+			abandoned
 		};
 
 		this.scene.start('GameOver', outcome);
@@ -949,9 +955,10 @@ export class Game extends Scene {
 			.setScrollFactor(0);
 
 		// Cell 3 — right-aligned run state, kept clear of the End Run button.
-		const endRunWidth = this.mode === 'endless' ? 150 : 0;
+		// Every mode gets a way out, tower floors included.
+		const endRunWidth = 150;
 		const cell3Right = innerRight - endRunWidth;
-		if (endRunWidth > 0) divider(cell3Right + 18);
+		divider(cell3Right + 18);
 
 		if (this.mode === 'endless') {
 			smallLabel(cell3Right, midY - 20, 'GAMES WON', 1);
@@ -975,8 +982,9 @@ export class Game extends Scene {
 				.setDepth(50)
 				.setScrollFactor(0);
 
-			this.buildEndRunButton(innerRight - endRunWidth / 2 + 6, midY);
 		}
+
+		this.buildEndRunButton(innerRight - endRunWidth / 2 + 6, midY);
 
 		// Transient row, below the bar. Combo on the left, control timer centred,
 		// so a long control label can never collide with the combo badge.
@@ -1056,36 +1064,46 @@ export class Game extends Scene {
 		this.hudBottom = belowY + 24;
 	}
 
-	/** Endless has no natural end, so it needs an explicit way to bank a run. */
+	/**
+	 * A way out of any run. Endless has no natural end so it needs one to bank a
+	 * score; a tower floor needs one so a hopeless position is not a dead end.
+	 */
 	private buildEndRunButton(x: number, y: number) {
+		const label = this.towerFloor ? 'Leave Floor' : 'End Run';
 		const container = this.add.container(x, y).setScrollFactor(0).setDepth(52);
 		const frame = this.add
 			.rectangle(0, 0, 128, 42, PALETTE.oak, 0.95)
 			.setStrokeStyle(2, PALETTE.gold, 0.8);
 		const face = this.add.rectangle(0, 0, 118, 32, PALETTE.crimson, 0.95);
-		const label = this.add
-			.text(0, 0, 'End Run', {
+		const text = this.add
+			.text(0, 0, label, {
 				fontFamily: FONT_BODY,
 				fontSize: '17px',
 				color: PARCHMENT
 			})
 			.setOrigin(0.5);
 
-		container.add([frame, face, label]);
+		container.add([frame, face, text]);
 		container.setSize(128, 42);
 		container.setInteractive({ useHandCursor: true });
 
 		container.on('pointerover', () => {
 			face.setFillStyle(PALETTE.crimsonLight, 1);
-			label.setColor(GOLD_BRIGHT);
+			text.setColor(GOLD_BRIGHT);
 		});
 		container.on('pointerout', () => {
 			face.setFillStyle(PALETTE.crimson, 0.95);
-			label.setColor(PARCHMENT);
+			text.setColor(PARCHMENT);
 		});
 		container.on('pointerdown', () => {
-			// Ending voluntarily is neither a win nor a loss; the score stands.
-			this.endRun('You left the climb of your own accord.', 0.5);
+			// Leaving is neither a win nor a loss, and never clears a floor.
+			this.endRun(
+				this.towerFloor
+					? 'You left the floor unfinished.'
+					: 'You left the climb of your own accord.',
+				0.5,
+				true
+			);
 		});
 	}
 

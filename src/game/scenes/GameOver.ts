@@ -33,8 +33,9 @@ export class GameOver extends Scene {
 		this.hasSaved = false;
 
 		// A tower floor counts as cleared on a win or a draw — on the Spire
-		// floors you are losing, so holding the draw is the objective.
-		if (data.mode === 'tower' && data.floor && data.result >= 0.5) {
+		// floors you are losing, so holding the draw is the objective. Walking
+		// away is not a draw, however, and must never bank a floor.
+		if (data.mode === 'tower' && data.floor && data.result >= 0.5 && !data.abandoned) {
 			towerProgress.record(
 				data.floor,
 				data.result === 1 ? 'won' : 'drawn',
@@ -48,11 +49,15 @@ export class GameOver extends Scene {
 		const centerX = this.scale.width / 2;
 		drawBackdrop(this);
 
-		const cleared = this.outcome.mode === 'tower' && this.outcome.result >= 0.5;
-		const won = this.outcome.result === 1;
+		const cleared =
+			this.outcome.mode === 'tower' && this.outcome.result >= 0.5 && !this.outcome.abandoned;
+		const won = this.outcome.result === 1 && !this.outcome.abandoned;
 
-		const title =
-			this.outcome.mode === 'tower'
+		const title = this.outcome.abandoned
+			? this.outcome.mode === 'tower'
+				? 'Floor Abandoned'
+				: 'Climb Ended'
+			: this.outcome.mode === 'tower'
 				? cleared
 					? 'Floor Cleared'
 					: 'Floor Failed'
@@ -80,8 +85,9 @@ export class GameOver extends Scene {
 		const panelWidth = Math.min(640, this.scale.width - 60);
 		parchmentPanel(this, centerX, panelY, panelWidth, 240);
 
-		const headline =
-			this.outcome.result === 1
+		const headline = this.outcome.abandoned
+			? 'You walked away'
+			: this.outcome.result === 1
 				? 'The board is yours'
 				: this.outcome.result === 0.5
 					? 'A drawn game'

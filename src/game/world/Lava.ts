@@ -82,10 +82,13 @@ export class Lava {
 		this.warning = this.scene.add
 			.text(this.worldWidth / 2, worldHeight - 64, 'THE LAVA IS RISING', {
 				fontFamily: FONT_DISPLAY,
-				fontSize: '22px',
+				// Scales down on narrow screens so the warning never runs off the edge.
+				fontSize: `${Math.max(15, Math.min(22, Math.round(this.worldWidth / 30)))}px`,
 				color: '#ffd2a8',
 				stroke: '#2a0a04',
-				strokeThickness: 5
+				strokeThickness: 5,
+				align: 'center',
+				wordWrap: { width: Math.max(160, this.worldWidth - 48) }
 			})
 			.setOrigin(0.5)
 			.setDepth(60)
