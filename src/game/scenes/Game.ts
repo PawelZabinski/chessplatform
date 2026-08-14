@@ -95,6 +95,8 @@ export class Game extends Scene {
 	private hasDoubleJumped = false;
 	private currentAnimKey: string | null = null;
 	private runEnded = false;
+	/** True during the floor-cleared send-off, when input and hazards are off. */
+	private completing = false;
 
 	private stage!: StageConfig;
 	private score = 0;
@@ -268,6 +270,7 @@ export class Game extends Scene {
 		this.hasDoubleJumped = false;
 		this.currentAnimKey = null;
 		this.runEnded = false;
+		this.completing = false;
 		this.controlUntil = 0;
 		this.dropThroughUntil = 0;
 		this.simNow = 0;
@@ -556,7 +559,10 @@ export class Game extends Scene {
 		const onGameOver = (detail: { reason: string; result: number }) => {
 			// A tower floor is a single position, so any result ends it.
 			if (this.mode === 'tower') {
-				this.endRun(detail.reason, detail.result);
+				// Clearing a floor gets a send-off rather than a cut to the results
+				// screen; failing it does not.
+				if (detail.result >= 0.5) this.playFloorCompletion(detail.reason, detail.result);
+				else this.endRun(detail.reason, detail.result);
 				return;
 			}
 
@@ -693,6 +699,13 @@ export class Game extends Scene {
 
 	update(_time: number, delta: number) {
 		if (this.runEnded) return;
+
+		// During the send-off the climb is on rails: no input, no lava, no
+		// generation. Only the sky keeps moving so the ascent reads.
+		if (this.completing) {
+			this.updateSky();
+			return;
+		}
 
 		// Everything downstream works in simulated time.
 		const dt = delta * this.gameSpeed;
@@ -1203,6 +1216,220 @@ export class Game extends Scene {
 			this.controlBar.width = this.controlBarWidth * (remaining / CONTROL_MAX_MS);
 			this.controlLabel.setText(`CONTROL  ${(remaining / 1000).toFixed(1)}s`);
 		}
+	}
+
+
+	// ── Touch controls ─────────────────────────────────────────────────────
+
+	/**
+	 * On-screen controls for phones and tablets.
+	 *
+	 * Only built when the device actually reports touch, so desktop is untouched.
+	 * They mirror the keyboard exactly rather than adding a second control model:
+	 * steering and jumping still require a control rune, and the brake and
+	 * drop-through are still always available.
+	 *
+	 * Laid out along the bottom because that is where thumbs rest, and kept clear
+	 * of the board, which sits below the canvas in portrait.
+	 */
+	private buildTouchControls() {
+		this.touchLayer?.destroy(true);
+		this.touchLayer = undefined;
+		this.touchState = { left: false, right: false, jump: false, down: false };
+
+		if (!this.supportsTouch()) return;
+
+		const layer = this.add.container(0, 0).setDepth(70).setScrollFactor(0);
+		this.touchLayer = layer;
+
+		const size = Phaser.Math.Clamp(Math.round(this.worldWidth * 0.11), 54, 84);
+		const pad = Math.round(size * 0.35);
+		const bottom = this.worldHeight - pad - size / 2;
+
+		const hold = (
+			x: number,
+			y: number,
+			label: string,
+			onDown: () => void,
+			onUp?: () => void,
+			tint = PALETTE.oak
+		) => {
+			const frame = this.add
+				.circle(x, y, size / 2, tint, 0.72)
+				.setStrokeStyle(2, PALETTE.gold, 0.75);
+			const text = this.add
+				.text(x, y, label, {
+					fontFamily: FONT_BODY,
+					fontSize: `${Math.round(size * 0.4)}px`,
+					color: PARCHMENT
+				})
+				.setOrigin(0.5);
+
+			frame.setInteractive({ useHandCursor: true });
+			frame.on('pointerdown', () => {
+				frame.setFillStyle(PALETTE.royalLight, 0.9);
+				onDown();
+			});
+			const release = () => {
+				frame.setFillStyle(tint, 0.72);
+				onUp?.();
+			};
+			frame.on('pointerup', release);
+			frame.on('pointerout', release);
+			frame.on('pointerupoutside', release);
+
+			layer.add([frame, text]);
+			return frame;
+		};
+
+		// Steering on the left, actions on the right.
+		hold(pad + size / 2, bottom, '◀', () => (this.touchState.left = true), () => (this.touchState.left = false));
+		hold(pad * 2 + size * 1.5, bottom, '▶', () => (this.touchState.right = true), () => (this.touchState.right = false));
+
+		hold(
+			this.worldWidth - pad - size / 2,
+			bottom,
+			'▲',
+			() => (this.touchState.jump = true),
+			() => (this.touchState.jump = false),
+			PALETTE.forest
+		);
+		hold(
+			this.worldWidth - pad * 2 - size * 1.5,
+			bottom,
+			'▼',
+			() => (this.touchState.down = true),
+			() => (this.touchState.down = false)
+		);
+
+		// Slow-motion sits above the action pair, out of the way of a mis-tap.
+		hold(
+			this.worldWidth - pad - size / 2,
+			bottom - size - pad,
+			'◑',
+			() => this.triggerSlowMotion(),
+			undefined,
+			PALETTE.royal
+		);
+	}
+
+	/** Touch buttons are held, not tapped; these turn a hold into one press. */
+	private consumeTouchJump(): boolean {
+		if (!this.touchState.jump) return false;
+		this.touchState.jump = false;
+		return true;
+	}
+
+	private consumeTouchDown(): boolean {
+		if (!this.touchState.down) return false;
+		this.touchState.down = false;
+		return true;
+	}
+
+	private supportsTouch(): boolean {
+		if (typeof window === 'undefined') return false;
+		return (
+			this.sys.game.device.input.touch &&
+			(navigator.maxTouchPoints > 0 || window.matchMedia('(pointer: coarse)').matches)
+		);
+	}
+
+	/** True while the key OR its on-screen equivalent is held. */
+	private held(key: Phaser.Input.Keyboard.Key, touch: boolean) {
+		return key.isDown || touch;
+	}
+
+	/**
+	 * The send-off when a tower floor is cleared.
+	 *
+	 * Ending the instant the chess finished was abrupt — the climb simply stopped
+	 * mid-air and cut to a results screen. Instead the tower opens up: everything
+	 * above the climber is cleared away, the hazards stop, and they are carried
+	 * up through the empty shaft into the next floor before the results appear.
+	 *
+	 * Nothing here changes the outcome; it is the same result, delivered.
+	 */
+	private playFloorCompletion(reason: string, result: number) {
+		if (this.completing || this.runEnded) return;
+		this.completing = true;
+
+		// Hazards off, and the world above swept clear so the way up is open.
+		this.clearWorldAbovePlayer();
+
+		const body = this.player.body as Phaser.Physics.Arcade.Body;
+		body.setAllowGravity(false);
+		body.setVelocity(0, 0);
+		body.enable = false;
+		this.playAnimation('ninja-jump', false);
+
+		this.showBanner('FLOOR CLEARED', this.towerFloor?.name ?? '', GOLD_BRIGHT);
+		this.cameras.main.flash(400, 240, 220, 160, false);
+
+		// A shaft of light for them to rise through.
+		const beam = this.add
+			.rectangle(this.player.x, this.player.y, 120, 2600, 0xffe6a8, 0.14)
+			.setOrigin(0.5, 1)
+			.setDepth(8);
+		this.tweens.add({ targets: beam, alpha: 0.3, duration: 500, yoyo: true, repeat: -1 });
+
+		const rise = this.worldHeight * 1.6;
+
+		this.tweens.add({
+			targets: this.player,
+			y: this.player.y - rise,
+			duration: 2200,
+			ease: 'Cubic.easeIn',
+			onUpdate: () => {
+				beam.setPosition(this.player.x, this.player.y + 40);
+			},
+			onComplete: () => {
+				this.time.delayedCall(350, () => this.endRun(reason, result));
+			}
+		});
+
+		// A trail of motes so the ascent has some weight to it.
+		if (this.textures.exists('mote')) {
+			const trail = this.add.particles(0, 0, 'mote', {
+				follow: this.player,
+				lifespan: 900,
+				speedY: { min: 40, max: 140 },
+				speedX: { min: -30, max: 30 },
+				scale: { start: 0.9, end: 0 },
+				alpha: { start: 0.9, end: 0 },
+				tint: [0xffe6a8, 0xf0d264],
+				frequency: 30,
+				blendMode: 'ADD'
+			});
+			trail.setDepth(9);
+		}
+	}
+
+	/**
+	 * Clears the tower above the climber so the ascent is unobstructed, and stops
+	 * anything else spawning into it.
+	 */
+	private clearWorldAbovePlayer() {
+		const cutoff = this.player.y + 40;
+
+		const sweep = (group: Phaser.Physics.Arcade.Group | Phaser.Physics.Arcade.StaticGroup) => {
+			(group.getChildren() as Phaser.GameObjects.Sprite[])
+				.filter((obj) => obj.y < cutoff)
+				.forEach((obj) => {
+					this.tweens.add({
+						targets: obj,
+						alpha: 0,
+						duration: 320,
+						onComplete: () => obj.destroy()
+					});
+				});
+		};
+
+		sweep(this.field.platforms);
+		sweep(this.field.spikes);
+		sweep(this.field.runes);
+
+		// Nothing new is generated: updateClimb no longer runs while completing.
+		this.highestLevelGenerated = Number.MAX_SAFE_INTEGER;
 	}
 
 	private flashMessage(text: string, color: string) {
