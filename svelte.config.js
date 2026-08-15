@@ -10,7 +10,13 @@ const config = {
 		adapter: adapter({
 			precompress: false,
 			fallback: 'index.html'
-		})
+		}),
+		// Pure game rules (lift, stages, floors, themes) are shared between the
+		// platformer and, later, the match server — so they get their own alias
+		// rather than being reached through a chain of ../../.
+		alias: {
+			$game: 'src/game'
+		}
 	}
 };
 

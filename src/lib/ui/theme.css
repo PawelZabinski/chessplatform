@@ -1,0 +1,148 @@
+/*
+ * The medieval design system.
+ *
+ * One stylesheet shared by every surface — menus, HUD, board frame, dialogs — so
+ * the chess half and the climbing half read as one product rather than two
+ * things bolted together. The two are separate *parts* with separate code, but
+ * they are dressed from the same wardrobe.
+ */
+
+:root {
+	--oak: #3b2a1c;
+	--oak-light: #5a412c;
+	--oak-dark: #241a10;
+	--gold: #c9a227;
+	--gold-bright: #f0d264;
+	--parchment: #e8d8b0;
+	--parchment-dark: #d2be91;
+	--parchment-edge: #8a6f47;
+	--ink: #2b1f14;
+	--ink-soft: #57432e;
+	--crimson: #7b2230;
+	--crimson-light: #a33042;
+	--forest: #2f4a32;
+	--forest-light: #436b48;
+	--royal: #2a3560;
+	--royal-light: #3d4c85;
+	--shadow: #0b0704;
+
+	--font-display: 'Cinzel Decorative', 'Cinzel', Georgia, serif;
+	--font-body: 'Cinzel', Georgia, 'Times New Roman', serif;
+
+	--rule: 2px solid var(--gold);
+}
+
+.mv-panel {
+	background: linear-gradient(160deg, #efe2c0, #ddcaa0);
+	border: var(--rule);
+	box-shadow:
+		inset 0 0 0 1px rgba(138, 111, 71, 0.55),
+		0 24px 60px -22px #000;
+	color: var(--ink);
+}
+
+.mv-title {
+	font-family: var(--font-display);
+	font-weight: 900;
+	color: var(--gold-bright);
+	text-shadow: 0 2px 0 #1a1109, 0 0 26px rgba(201, 162, 39, 0.35);
+	letter-spacing: 0.03em;
+	margin: 0;
+}
+
+/* Gold rule with diamond finials — the recurring heading motif. */
+.mv-rule {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	justify-content: center;
+	margin: 10px 0 0;
+}
+
+.mv-rule::before,
+.mv-rule::after {
+	content: '';
+	height: 1px;
+	flex: 1 1 auto;
+	max-width: 140px;
+	background: linear-gradient(90deg, transparent, var(--gold), transparent);
+}
+
+.mv-rule span {
+	width: 8px;
+	height: 8px;
+	transform: rotate(45deg);
+	background: var(--gold);
+}
+
+.mv-button {
+	display: block;
+	width: 100%;
+	padding: 14px 18px;
+	border: 2px solid var(--gold);
+	border-radius: 2px;
+	background: var(--forest);
+	color: var(--parchment);
+	font-family: var(--font-body);
+	font-size: clamp(15px, 1.5vw, 20px);
+	letter-spacing: 0.02em;
+	cursor: pointer;
+	box-shadow: 0 0 0 3px var(--oak), 0 10px 24px -14px #000;
+	transition:
+		transform 0.12s ease,
+		background 0.12s ease,
+		color 0.12s ease;
+}
+
+.mv-button:hover:not(:disabled) {
+	background: var(--forest-light);
+	color: var(--gold-bright);
+	transform: translateY(-1px);
+}
+
+.mv-button:active:not(:disabled) {
+	transform: translateY(1px);
+}
+
+.mv-button:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+
+.mv-button.royal {
+	background: var(--royal);
+}
+.mv-button.royal:hover:not(:disabled) {
+	background: var(--royal-light);
+}
+.mv-button.crimson {
+	background: var(--crimson);
+}
+.mv-button.crimson:hover:not(:disabled) {
+	background: var(--crimson-light);
+}
+.mv-button.quiet {
+	background: var(--oak-light);
+}
+.mv-button.quiet:hover:not(:disabled) {
+	background: var(--oak);
+}
+
+.mv-caption {
+	font-family: var(--font-body);
+	color: rgba(232, 216, 176, 0.78);
+	font-size: clamp(12px, 1.2vw, 15px);
+	line-height: 1.6;
+	margin: 0;
+}
+
+.mv-gold {
+	color: var(--gold-bright);
+}
+
+/* Focus ring that suits the palette and never disappears for keyboard users. */
+.mv-button:focus-visible,
+button:focus-visible {
+	outline: 2px solid var(--gold-bright);
+	outline-offset: 2px;
+}

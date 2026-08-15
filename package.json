@@ -43,7 +43,6 @@
     "type": "module",
     "dependencies": {
         "chess.js": "^1.4.0",
-        "chessground": "^8.4.0",
-        "phaser": "^3.90.0"
+        "chessground": "^8.4.0"
     }
 }

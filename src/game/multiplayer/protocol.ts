@@ -310,7 +310,7 @@ export const DEFAULT_MATCH_CONFIG: MatchConfig = {
  *
  * - Lift is already a pure function (src/game/lift.ts). The server should import
  *   the same module so client and server agree on the reward for a move; that is
- *   why it has no Phaser dependency and takes a plain object.
+ *   why it has no framework dependency and takes a plain object.
  *
  * - Game scene: a 'multiplayer' GameMode alongside 'tower' and 'endless'. It
  *   differs from endless in three ways only — the opponent is remote, a second

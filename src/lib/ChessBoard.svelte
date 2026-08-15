@@ -1,22 +1,47 @@
+<script lang="ts" context="module">
+	import type { DrawRisk, GameOverDetail } from '$lib/board/BoardController';
+	import type { Move } from 'chess.js';
+
+	/**
+	 * What the rest of the app may ask of the board.
+	 *
+	 * The board is one of the two halves of the game and knows nothing about the
+	 * climb: no lava, no platforms, no score. Everything flows through this
+	 * handle and the callback props, which is what keeps the two parts genuinely
+	 * separable — and is the same seam a networked opponent will plug into.
+	 */
+	export interface BoardHandle {
+		loadPosition(detail: { fen?: string; engine?: unknown }): void;
+		configureEngine(settings: unknown): void;
+		removePiece(colour?: 'w' | 'b'): void;
+		restorePiece(colour?: 'w' | 'b'): void;
+		setSlowMotion(active: boolean): void;
+		reset(): void;
+	}
+
+	export type { Move, DrawRisk, GameOverDetail };
+</script>
+
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
 	import { BoardController, type MoveProvider } from '$lib/board/BoardController';
 	import { Engine } from '$lib/engine';
 	import { chessState } from '$lib/stores/chess';
-	import { ChessEvents, EventBus } from '../game/EventBus';
 
-	// All three stylesheets come from chessground itself (aliased in vite config —
-	// see the note there): structural layout, the brown board, and the cburnett
-	// piece set.
-	//
-	// The board pattern in particular must come from the library. It ships as a
-	// pixel-exact embedded SVG; an earlier attempt to hand-roll the checkerboard
-	// with CSS gradients produced squares that did not line up with the pieces.
-	// Only interaction colours are overridden below, which is safe because they
-	// tint individual <square> elements rather than the board geometry.
+	// Board layout and the cburnett piece set come from chessground itself.
+	// The square pattern must come from the library: it ships as a pixel-exact
+	// embedded SVG, and hand-rolling it with CSS gradients produced squares that
+	// did not line up with the pieces. Only interaction colours are overridden,
+	// which is safe because those tint individual squares, not board geometry.
 	import 'chessground-assets/chessground.base.css';
 	import 'chessground-assets/chessground.brown.css';
 	import 'chessground-assets/chessground.cburnett.css';
+
+	export let onMove: (move: Move) => void = () => {};
+	export let onGameOver: (detail: GameOverDetail) => void = () => {};
+	export let onDrawRisk: (risk: DrawRisk) => void = () => {};
+	export let onEnPassant: () => void = () => {};
+	export let handle: BoardHandle | null = null;
 
 	type EngineConfig = {
 		randomMoveProbability?: number;
@@ -30,7 +55,6 @@
 
 	const engine = new Engine();
 
-	/** Adapts the Stockfish engine to the board's opponent interface. */
 	const engineOpponent: MoveProvider = {
 		colour: 'b',
 		getMove: (fen) => engine.getMove(fen),
@@ -39,57 +63,41 @@
 		}
 	};
 
-	function loadPosition(detail: { fen?: string; engine?: EngineConfig }) {
-		if (detail?.engine) engine.configure(detail.engine);
-		// Safe to call straight from a game-over handler: BoardController reports
-		// game-over only once the board has been fully settled.
-		controller?.load(detail?.fen);
-	}
-
 	onMount(() => {
 		controller = new BoardController(boardElement, {
 			onMove: (move) => {
 				chessState.addMove(move);
-				if (move.flags.includes('e')) EventBus.emit(ChessEvents.enPassant);
+				if (move.flags.includes('e')) onEnPassant();
+				onMove(move);
 			},
 			onPositionChange: (fen) => chessState.setFen(fen),
-			onGameOver: (detail) => EventBus.emit(ChessEvents.gameOver, detail),
-			onDrawRisk: (risk) => EventBus.emit(ChessEvents.drawRisk, risk)
+			onGameOver: (detail) => onGameOver(detail),
+			onDrawRisk: (risk) => onDrawRisk(risk)
 		});
 		controller.setOpponent(engineOpponent);
 
+		handle = {
+			loadPosition: (detail) => {
+				if (detail?.engine) engine.configure(detail.engine as EngineConfig);
+				chessState.clearHistory();
+				// Safe to call from a game-over handler: BoardController reports
+				// game-over only once the board has fully settled.
+				controller?.load(detail?.fen);
+			},
+			configureEngine: (settings) => engine.configure(settings as EngineConfig),
+			removePiece: (colour = 'w') =>
+				chessState.removeRandomPiece(colour, (fen) => controller?.setFenSilently(fen)),
+			restorePiece: (colour = 'w') => {
+				chessState.restoreFallenPiece(colour, (fen) => controller?.setFenSilently(fen));
+			},
+			setSlowMotion: (active) => controller?.setSlowMotion(active),
+			reset: () => {
+				chessState.clearHistory();
+				controller?.reset();
+			}
+		};
+
 		void engine.init().then(() => controller?.load());
-
-		const removeListener = (colour: 'w' | 'b' = 'w') =>
-			chessState.removeRandomPiece(colour, (fen) => controller?.setFenSilently(fen));
-		const restoreListener = (colour: 'w' | 'b' = 'w') =>
-			chessState.restoreFallenPiece(colour, (fen) => controller?.setFenSilently(fen));
-		const resetListener = () => {
-			chessState.clearHistory();
-			controller?.reset();
-		};
-		const loadListener = (detail: Parameters<typeof loadPosition>[0]) => {
-			chessState.clearHistory();
-			loadPosition(detail);
-		};
-		const configureListener = (settings: EngineConfig) => engine.configure(settings);
-		const slowMotionListener = (active: boolean) => controller?.setSlowMotion(active);
-
-		EventBus.on(ChessEvents.removePiece, removeListener);
-		EventBus.on(ChessEvents.restorePiece, restoreListener);
-		EventBus.on(ChessEvents.resetBoard, resetListener);
-		EventBus.on(ChessEvents.loadPosition, loadListener);
-		EventBus.on(ChessEvents.configureEngine, configureListener);
-		EventBus.on(ChessEvents.slowMotion, slowMotionListener);
-
-		return () => {
-			EventBus.off(ChessEvents.removePiece, removeListener);
-			EventBus.off(ChessEvents.restorePiece, restoreListener);
-			EventBus.off(ChessEvents.resetBoard, resetListener);
-			EventBus.off(ChessEvents.loadPosition, loadListener);
-			EventBus.off(ChessEvents.configureEngine, configureListener);
-			EventBus.off(ChessEvents.slowMotion, slowMotionListener);
-		};
 	});
 
 	onDestroy(() => controller?.destroy());
@@ -106,7 +114,12 @@
 
 	/* Gold for anything the player can act on. */
 	.board :global(cg-board square.move-dest) {
-		background: radial-gradient(rgba(201, 162, 39, 0.65) 22%, #c9a227 0, rgba(0, 0, 0, 0.25) 0, transparent 0);
+		background: radial-gradient(
+			rgba(201, 162, 39, 0.65) 22%,
+			#c9a227 0,
+			rgba(0, 0, 0, 0.25) 0,
+			transparent 0
+		);
 	}
 	.board :global(cg-board square.oc.move-dest) {
 		background: radial-gradient(transparent 0%, transparent 80%, rgba(201, 162, 39, 0.5) 80%);
@@ -129,7 +142,6 @@
 		);
 	}
 
-	/* Coordinates in the game's serif; chessground supplies their colours. */
 	.board :global(.cg-wrap coords coord) {
 		font-family: 'Cinzel', Georgia, serif;
 		font-size: 9px;
