@@ -41,13 +41,31 @@
 	color: var(--ink);
 }
 
+/*
+ * Engraved, not neon.
+ *
+ * The old title glowed, which read as a screen effect rather than gilding. This
+ * is how gold leaf on dark stone actually behaves: a light catch along the top
+ * edge, a hard shadow below, and no bloom at all. The gradient runs bright at
+ * the top to tarnished at the bottom, which is what sells it as a metal surface
+ * rather than a coloured font.
+ */
 .mv-title {
 	font-family: var(--font-display);
 	font-weight: 900;
-	color: var(--gold-bright);
-	text-shadow: 0 2px 0 #1a1109, 0 0 26px rgba(201, 162, 39, 0.35);
-	letter-spacing: 0.03em;
+	letter-spacing: 0.04em;
 	margin: 0;
+
+	background: linear-gradient(180deg, #f7e6ad 0%, #d9bd6a 45%, #a8801f 78%, #7d5c14 100%);
+	-webkit-background-clip: text;
+	background-clip: text;
+	color: transparent;
+
+	/* Cut edge: highlight above, shadow below. */
+	filter:
+		drop-shadow(0 1px 0 rgba(255, 240, 200, 0.35))
+		drop-shadow(0 2px 1px rgba(0, 0, 0, 0.85))
+		drop-shadow(0 4px 6px rgba(0, 0, 0, 0.55));
 }
 
 /* Gold rule with diamond finials — the recurring heading motif. */
@@ -75,27 +93,43 @@
 	background: var(--gold);
 }
 
+/*
+ * Metal-bound woodwork: an oak frame around a heraldic face, with a gold rule
+ * and a stud at each corner. The studs are painted as four small radial
+ * gradients on the face rather than as elements, so a button stays a single
+ * <button> and keeps its focus and hit behaviour.
+ */
 .mv-button {
+	position: relative;
 	display: block;
 	width: 100%;
-	padding: 14px 18px;
-	border: 2px solid var(--gold);
+	padding: 15px 20px;
+	border: 3px solid var(--oak);
 	border-radius: 2px;
-	background: var(--forest);
+	background-color: var(--forest);
+	background-image:
+		radial-gradient(circle at 11px 11px, var(--gold-bright) 0 2.5px, transparent 3px),
+		radial-gradient(circle at calc(100% - 11px) 11px, var(--gold-bright) 0 2.5px, transparent 3px),
+		radial-gradient(circle at 11px calc(100% - 11px), var(--gold-bright) 0 2.5px, transparent 3px),
+		radial-gradient(circle at calc(100% - 11px) calc(100% - 11px), var(--gold-bright) 0 2.5px, transparent 3px);
 	color: var(--parchment);
 	font-family: var(--font-body);
 	font-size: clamp(15px, 1.5vw, 20px);
 	letter-spacing: 0.02em;
 	cursor: pointer;
-	box-shadow: 0 0 0 3px var(--oak), 0 10px 24px -14px #000;
+	/* Gold rule inside the oak frame, then the drop shadow. */
+	box-shadow:
+		inset 0 0 0 2px var(--gold),
+		0 10px 24px -14px #000;
+	text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
 	transition:
 		transform 0.12s ease,
-		background 0.12s ease,
+		background-color 0.12s ease,
 		color 0.12s ease;
 }
 
 .mv-button:hover:not(:disabled) {
-	background: var(--forest-light);
+	background-color: var(--forest-light);
 	color: var(--gold-bright);
 	transform: translateY(-1px);
 }
@@ -110,22 +144,22 @@
 }
 
 .mv-button.royal {
-	background: var(--royal);
+	background-color: var(--royal);
 }
 .mv-button.royal:hover:not(:disabled) {
-	background: var(--royal-light);
+	background-color: var(--royal-light);
 }
 .mv-button.crimson {
-	background: var(--crimson);
+	background-color: var(--crimson);
 }
 .mv-button.crimson:hover:not(:disabled) {
-	background: var(--crimson-light);
+	background-color: var(--crimson-light);
 }
 .mv-button.quiet {
-	background: var(--oak-light);
+	background-color: var(--oak-light);
 }
 .mv-button.quiet:hover:not(:disabled) {
-	background: var(--oak);
+	background-color: #6b4f35;
 }
 
 .mv-caption {

@@ -2,6 +2,7 @@
 	import { TOTAL_FLOORS } from '$game/levels';
 	import { towerProgress } from '$lib/stores/progress';
 	import { goto } from '$lib/stores/app';
+	import Modal from './Modal.svelte';
 	import Shell from './Shell.svelte';
 
 	$: cleared = Object.keys($towerProgress).length;
@@ -32,21 +33,24 @@
 		Hall of Champions
 	</button>
 
-	<button class="link" on:click={() => (showHelp = !showHelp)}>
-		{showHelp ? 'Hide' : 'How to play'}
-	</button>
-
-	{#if showHelp}
-		<ul class="help mv-caption">
-			<li><b>Captures lift you</b> — the bigger the piece, the higher the leap.</li>
-			<li><b>Files steer</b> you left and right.</li>
-			<li><b>Space</b> brakes you to a stop; <b>↓ / S</b> drops through a wooden plank.</li>
-			<li><b>Gold runes</b> grant 5s of direct control, stacking to 10s.</li>
-			<li><b>Wooden planks</b> can be jumped through; grey stone cannot.</li>
-			<li><b>Climbing charges slow-motion</b> — press <b>Q</b> to spend it.</li>
-		</ul>
-	{/if}
+	<button class="link" on:click={() => (showHelp = true)}>How to play</button>
 </Shell>
+
+{#if showHelp}
+	<Modal title="How to play" onClose={() => (showHelp = false)}>
+		<p class="lede">Your moves on the board are the climb. You never steer directly.</p>
+		<ul class="help">
+			<li><b>Captures lift you</b> — the bigger the piece, the higher the leap.</li>
+			<li><b>Files steer</b> you left and right; ranks do nothing.</li>
+			<li><b>Space</b> brakes you to a stop.</li>
+			<li><b>↓ or S</b> drops you through a wooden plank, never through stone.</li>
+			<li><b>Gold runes</b> grant 5s of direct control and jumps, stacking to 10s.</li>
+			<li><b>Wooden planks</b> can be jumped up through; grey stone cannot.</li>
+			<li><b>Climbing charges slow-motion</b> — press <b>Q</b> to slow the whole tower.</li>
+			<li><b>Stalling burns you.</b> The lava never stops rising.</li>
+		</ul>
+	</Modal>
+{/if}
 
 <style>
 	.centre {
@@ -65,15 +69,22 @@
 		padding: 4px;
 	}
 
+	.lede {
+		margin: 0 0 12px;
+		color: var(--ink-soft);
+	}
+
 	.help {
 		margin: 0;
 		padding-left: 20px;
-		text-align: left;
-		line-height: 1.8;
+	}
+
+	.help li {
+		margin-bottom: 6px;
 	}
 
 	.help b {
-		color: var(--gold-bright);
+		color: var(--crimson);
 		font-weight: 600;
 	}
 </style>
