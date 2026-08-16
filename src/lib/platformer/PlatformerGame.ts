@@ -1,4 +1,5 @@
 import {
+	CAMERA_ANCHOR,
 	CONTROL_DURATION_MS,
 	CONTROL_MAX_MS,
 	SLOWMO_CHARGE_PER_BAND,
@@ -196,7 +197,7 @@ export class PlatformerGame {
 
 		this.player = new Player(width / 2 - 17, baseline - GROUND_INSET - PLAYER_HEIGHT - 4);
 		this.lava = new Lava(this.floor ? this.floor.lavaSpeed : 10, baseline, height);
-		this.cameraY = this.player.y - height * 0.5;
+		this.cameraY = this.player.y - height * CAMERA_ANCHOR;
 
 		if (this.floor) {
 			this.callbacks.loadPosition({ fen: this.floor.fen, engine: engineForFloor(this.floor) });
@@ -461,7 +462,7 @@ export class PlatformerGame {
 
 	private updateCamera() {
 		// Follows vertically only, easing so a big launch does not snap the view.
-		const target = this.player.y - this.surface.height * 0.55;
+		const target = this.player.y - this.surface.height * CAMERA_ANCHOR;
 		this.cameraY += (target - this.cameraY) * 0.12;
 	}
 
@@ -572,7 +573,7 @@ export class PlatformerGame {
 			const eased = t * t;
 			this.player.prevY = this.player.y;
 			this.player.y = startY - rise * eased;
-			this.cameraY = this.player.y - this.surface.height * 0.55;
+			this.cameraY = this.player.y - this.surface.height * CAMERA_ANCHOR;
 
 			if (t < 1) {
 				requestAnimationFrame(lift);

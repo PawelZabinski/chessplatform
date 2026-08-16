@@ -43,3 +43,13 @@ export const SLOWMO_CHARGE_PER_BAND = 0.055;
 export const SLOWMO_DURATION_MS = 6000;
 /** Minimum charge before it can be triggered at all. */
 export const SLOWMO_MIN_CHARGE = 0.35;
+
+/**
+ * Where the climber sits in the view, as a fraction from the top.
+ *
+ * Low on the screen, because this is a climbing game: whatever is above you is
+ * what you are about to jump to, so most of the viewport should be sky. It also
+ * keeps the floor as a strip along the bottom rather than a slab filling the
+ * lower half.
+ */
+export const CAMERA_ANCHOR = 0.74;
