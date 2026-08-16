@@ -83,7 +83,7 @@
 		{/if}
 	</section>
 
-	<section class="board-side" aria-label="The board">
+	<section class="board-side mv-backdrop" aria-label="The board">
 		<div class="board-frame">
 			<ChessBoard
 				bind:handle={board}
@@ -125,11 +125,10 @@
 		place-items: center;
 		padding: clamp(10px, 2vh, 24px) clamp(10px, 1.5vw, 20px);
 		box-sizing: border-box;
-		background:
-			linear-gradient(180deg, rgba(59, 42, 28, 0.5) 0%, rgba(11, 7, 4, 0.92) 100%),
-			var(--shadow);
-		border-left: var(--rule);
-		box-shadow: inset 18px 0 40px -20px #000;
+		/* A soft seam rather than a hard gold rule: the two halves are distinct
+		   regions of one page, not two framed boxes. */
+		border-left: 1px solid rgba(201, 162, 39, 0.28);
+		box-shadow: inset 22px 0 46px -26px #000;
 		min-width: 0;
 	}
 
@@ -159,8 +158,8 @@
 		.board-side {
 			flex: 0 0 auto;
 			border-left: none;
-			border-top: var(--rule);
-			box-shadow: inset 0 18px 40px -22px #000;
+			border-top: 1px solid rgba(201, 162, 39, 0.28);
+			box-shadow: inset 0 22px 46px -26px #000;
 			padding: clamp(6px, 1.2vh, 12px) 10px calc(clamp(6px, 1.2vh, 12px) + env(safe-area-inset-bottom));
 		}
 

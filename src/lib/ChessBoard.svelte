@@ -53,6 +53,16 @@
 	let boardElement: HTMLDivElement;
 	let controller: BoardController | null = null;
 
+	/**
+	 * Whether a caller has already dealt a position.
+	 *
+	 * Engine startup resolves asynchronously, well after the game has asked for a
+	 * tower floor's FEN. Without this flag the init callback loaded the standard
+	 * opening on top of it, so every floor began from the normal starting
+	 * position instead of its own.
+	 */
+	let positionDealt = false;
+
 	const engine = new Engine();
 
 	const engineOpponent: MoveProvider = {
@@ -78,6 +88,7 @@
 
 		handle = {
 			loadPosition: (detail) => {
+				positionDealt = true;
 				if (detail?.engine) engine.configure(detail.engine as EngineConfig);
 				chessState.clearHistory();
 				// Safe to call from a game-over handler: BoardController reports
@@ -97,7 +108,11 @@
 			}
 		};
 
-		void engine.init().then(() => controller?.load());
+		// The controller already has the standard position on screen; this only
+		// needs to kick off an opening reply if nobody has dealt a floor.
+		void engine.init().then(() => {
+			if (!positionDealt) controller?.load();
+		});
 	});
 
 	onDestroy(() => controller?.destroy());

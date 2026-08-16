@@ -9,11 +9,11 @@
 	Shared frame for every menu screen.
 
 	Menus are markup now rather than hand-placed canvas text, so they scroll,
-	wrap and reflow on their own. This is the single place the gold border,
-	vignette and heading treatment live, which is what keeps the screens looking
-	like one game.
+	wrap and reflow on their own. This is the single place the patterned ground
+	and heading treatment live, which is what keeps the screens looking like one
+	game.
 -->
-<div class="screen">
+<div class="screen mv-backdrop">
 	<div class="frame">
 		<div class="inner" class:wide>
 			<header>
@@ -35,20 +35,16 @@
 		width: 100vw;
 		box-sizing: border-box;
 		padding: clamp(10px, 2vh, 26px);
-		background:
-			radial-gradient(circle at 50% 28%, #241a12 0%, #140e09 46%, var(--shadow) 100%),
-			var(--shadow);
 		display: grid;
 		place-items: center;
 		overflow-y: auto;
 	}
 
+	/* No border here any more — the patterned ground carries the framing. */
 	.frame {
 		width: 100%;
 		min-height: calc(100dvh - clamp(20px, 4vh, 52px));
 		box-sizing: border-box;
-		border: 1px solid rgba(201, 162, 39, 0.5);
-		box-shadow: inset 0 0 0 6px rgba(11, 7, 4, 0.6);
 		display: grid;
 		place-items: center;
 		padding: clamp(14px, 3vh, 36px) clamp(12px, 3vw, 32px);

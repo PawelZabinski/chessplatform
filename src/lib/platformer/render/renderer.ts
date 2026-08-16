@@ -40,20 +40,12 @@ export function renderWorld(
 	const camY = state.cameraY;
 	const toScreenY = (worldY: number) => worldY - camY;
 
-	drawSky(ctx, width, height, state);
-	drawParallax(ctx, width, height, state, camY);
-	drawWalls(ctx, width, height, state, camY);
-
-	// Ground slab, drawn tall enough that it never shows a gap at the bottom.
 	const groundScreenY = toScreenY(world.ground.y);
-	if (groundScreenY < height) {
-		const tex = texturesFor(world.ground.theme).ground;
-		const tileW = tex.width * 2;
-		const tileH = tex.height * 2;
-		for (let x = 0; x < width + tileW; x += tileW) {
-			ctx.drawImage(tex, Math.round(x), Math.round(groundScreenY), tileW, tileH);
-		}
-	}
+
+	drawSky(ctx, width, height, state);
+	drawParallax(ctx, width, height, state, camY, groundScreenY);
+	drawWalls(ctx, width, height, state, camY);
+	drawGround(ctx, width, height, world, groundScreenY);
 
 	drawPlatforms(ctx, world, height, toScreenY);
 	drawHazards(ctx, world, height, state.simTime, toScreenY, sprites);
@@ -90,12 +82,41 @@ function drawSky(
 	ctx.fillRect(0, 0, width, height);
 }
 
+/**
+ * The floor of the tower.
+ *
+ * Tiled all the way to the bottom of the viewport rather than one tile deep —
+ * a single tile left a gap underneath, so the ground appeared to hover with the
+ * backdrop showing through below it.
+ */
+function drawGround(
+	ctx: CanvasRenderingContext2D,
+	width: number,
+	height: number,
+	world: World,
+	groundScreenY: number
+) {
+	if (groundScreenY >= height) return;
+
+	const tex = texturesFor(world.ground.theme).ground;
+	const tileW = tex.width * 2;
+	const tileH = tex.height * 2;
+	const top = Math.round(groundScreenY);
+
+	for (let y = top; y < height; y += tileH) {
+		for (let x = 0; x < width; x += tileW) {
+			ctx.drawImage(tex, Math.round(x), y, tileW, tileH);
+		}
+	}
+}
+
 function drawParallax(
 	ctx: CanvasRenderingContext2D,
 	width: number,
 	height: number,
 	state: RenderState,
-	camY: number
+	camY: number,
+	groundScreenY: number
 ) {
 	// Stars fade in with altitude; the distant town sinks away as you climb.
 	const stars = starfield();
@@ -112,14 +133,16 @@ function drawParallax(
 		ctx.restore();
 	}
 
+	// Distant town, standing on the horizon: its base sits at the ground line so
+	// the towers rise from behind the floor rather than under it.
 	const town = skyline();
 	const townAlpha = 0.75 * (1 - state.altitude);
 	if (townAlpha > 0.01) {
+		const baseY = Math.min(groundScreenY, height);
 		ctx.save();
 		ctx.globalAlpha = townAlpha;
-		const y = height - town.height + Math.max(0, -camY * 0.04);
 		for (let x = 0; x < width; x += town.width) {
-			ctx.drawImage(town, Math.round(x), Math.round(y));
+			ctx.drawImage(town, Math.round(x), Math.round(baseY - town.height));
 		}
 		ctx.restore();
 	}

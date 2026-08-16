@@ -180,3 +180,25 @@ button:focus-visible {
 	outline: 2px solid var(--gold-bright);
 	outline-offset: 2px;
 }
+
+/*
+ * Medieval diaper pattern.
+ *
+ * Replaces the gold outline that used to frame the page. A repeating diamond
+ * lattice with a small fleur at each crossing — the diaper work used on
+ * illuminated manuscript grounds and heraldic backdrops. Kept very low contrast
+ * so it reads as texture rather than as decoration competing with the content,
+ * and drawn as an inline SVG so it costs no request and scales at any DPI.
+ */
+.mv-backdrop {
+	background-color: #140e09;
+	background-image:
+		/* warm pool of light in the middle, so the pattern falls away at the edges */
+		radial-gradient(ellipse at 50% 34%, rgba(74, 52, 32, 0.62) 0%, rgba(20, 14, 9, 0.78) 55%, rgba(11, 7, 4, 0.94) 100%),
+		url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64'%3E%3Cg fill='none' stroke='%23c9a227' stroke-opacity='0.30' stroke-width='1'%3E%3Cpath d='M32 0 L64 32 L32 64 L0 32 Z'/%3E%3Cpath d='M0 0 L64 64 M64 0 L0 64' stroke-opacity='0.14'/%3E%3C/g%3E%3Cg fill='%23c9a227' fill-opacity='0.26'%3E%3Ccircle cx='32' cy='32' r='2.2'/%3E%3Ccircle cx='0' cy='0' r='1.6'/%3E%3Ccircle cx='64' cy='0' r='1.6'/%3E%3Ccircle cx='0' cy='64' r='1.6'/%3E%3Ccircle cx='64' cy='64' r='1.6'/%3E%3C/g%3E%3C/svg%3E");
+	background-size:
+		100% 100%,
+		64px 64px;
+	background-repeat: no-repeat, repeat;
+	background-attachment: fixed, fixed;
+}

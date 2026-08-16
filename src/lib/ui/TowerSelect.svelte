@@ -47,7 +47,7 @@
 	});
 </script>
 
-<div class="screen">
+<div class="screen mv-backdrop">
 	<header class="top">
 		<h1 class="mv-title">The Tower</h1>
 		<p class="mv-caption">{cleared} of {TOTAL_FLOORS} floors cleared</p>
@@ -147,9 +147,6 @@
 		height: 100dvh;
 		width: 100vw;
 		box-sizing: border-box;
-		background:
-			radial-gradient(circle at 50% 20%, #241a12 0%, #140e09 50%, var(--shadow) 100%),
-			var(--shadow);
 		overflow: hidden;
 	}
 
