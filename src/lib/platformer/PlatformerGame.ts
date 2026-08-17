@@ -37,7 +37,7 @@ import {
 import { BAND_HEIGHT, overlaps } from './world/types';
 import { GROUND_INSET, World } from './world/World';
 
-export type GameMode = 'tower' | 'endless';
+export type GameMode = 'tower' | 'endless' | 'match';
 
 export interface StartOptions {
 	mode: GameMode;

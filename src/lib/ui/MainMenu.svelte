@@ -28,7 +28,7 @@
 		ends only when you lose.
 	</p>
 
-	<button class="mv-button quiet" on:click={() => goto({ name: 'lobby' })}>Two Climbers</button>
+	<button class="mv-button quiet" on:click={() => goto({ name: 'lobby' })}>The Race</button>
 	<button class="mv-button crimson" on:click={() => goto({ name: 'leaderboard' })}>
 		Hall of Champions
 	</button>

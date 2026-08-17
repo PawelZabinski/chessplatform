@@ -174,6 +174,33 @@ export type LeaderboardEntry = {
 };
 
 const LEADERBOARD_STORAGE_KEY = 'chessplatform-leaderboard';
+const LAST_NAME_STORAGE_KEY = 'chessplatform-last-name';
+
+/**
+ * The name used on the last saved run.
+ *
+ * Remembered so that recording a score is one confirmation rather than retyping
+ * your own name after every climb — the overwhelmingly common case is the same
+ * person on the same device.
+ */
+export const lastPlayerName = {
+	read(): string {
+		if (typeof window === 'undefined') return '';
+		try {
+			return window.localStorage.getItem(LAST_NAME_STORAGE_KEY) ?? '';
+		} catch {
+			return '';
+		}
+	},
+	write(name: string) {
+		if (typeof window === 'undefined') return;
+		try {
+			window.localStorage.setItem(LAST_NAME_STORAGE_KEY, name);
+		} catch {
+			/* Private browsing: the name simply is not remembered. */
+		}
+	}
+};
 
 function createLeaderboardStore() {
 	const { subscribe, set, update } = writable<LeaderboardEntry[]>([]);

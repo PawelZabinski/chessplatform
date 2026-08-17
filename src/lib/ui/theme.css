@@ -202,3 +202,32 @@ button:focus-visible {
 	background-repeat: no-repeat, repeat;
 	background-attachment: fixed, fixed;
 }
+
+/*
+ * Text inputs.
+ *
+ * The placeholder used to be grey-on-parchment, which on a warm background is
+ * both hard to read and out of key with everything else. Dark brown at reduced
+ * opacity stays clearly secondary to typed text while remaining legible.
+ */
+.mv-input {
+	width: 100%;
+	box-sizing: border-box;
+	padding: 12px 14px;
+	background: rgba(232, 216, 176, 0.92);
+	border: 2px solid var(--gold);
+	color: var(--ink);
+	font-family: var(--font-body);
+	font-size: 16px;
+}
+
+.mv-input::placeholder {
+	color: var(--parchment-edge);
+	opacity: 1; /* Firefox dims placeholders by default. */
+}
+
+.mv-input:focus-visible {
+	outline: none;
+	border-color: var(--gold-bright);
+	box-shadow: inset 0 0 0 1px var(--gold-bright);
+}

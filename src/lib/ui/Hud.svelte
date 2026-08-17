@@ -1,17 +1,5 @@
 <script lang="ts">
-	import { onDestroy } from 'svelte';
-	import DiagnosticsPanel from '$lib/ui/DiagnosticsPanel.svelte';
-	import { log } from '$lib/diagnostics';
 	import type { Banner, HudState, Toast } from '$lib/platformer/PlatformerGame';
-
-	let showLog = false;
-	let problems = 0;
-
-	// The badge is the only reason the HUD watches the log: if something has gone
-	// wrong the button should say so without being opened.
-	const stopWatching = log.subscribe((entries) => {
-		problems = entries.filter((e) => e.level === 'warn' || e.level === 'error').length;
-	});
 
 	export let hud: HudState | null = null;
 	export let toasts: Toast[] = [];
@@ -21,8 +9,6 @@
 	export let touch = false;
 
 	$: control = hud?.controlRemaining ?? 0;
-
-	onDestroy(stopWatching);
 </script>
 
 <!--
@@ -55,17 +41,6 @@
 				<span class="tier">{hud.tierLabel}</span>
 			</div>
 		{/if}
-
-		<button
-			class="logs"
-			class:alert={problems > 0}
-			type="button"
-			on:click={() => (showLog = true)}
-			aria-label="Diagnostics"
-			title="Diagnostics"
-		>
-			{problems > 0 ? `⚠ ${problems}` : 'ⓘ'}
-		</button>
 
 		<button class="leave" type="button" on:click={onLeave}>
 			{hud?.floorLabel ? 'Leave Floor' : 'End Run'}
@@ -114,10 +89,6 @@
 			<span class="kicker">{banner.kicker}</span>
 			<strong style:color={banner.accent}>{banner.title}</strong>
 		</div>
-	{/if}
-
-	{#if showLog}
-		<DiagnosticsPanel onClose={() => (showLog = false)} />
 	{/if}
 
 	<div class="toasts">
@@ -222,32 +193,6 @@
 	}
 	.fill.cool {
 		background: #9ecbf0;
-	}
-
-	.logs {
-		pointer-events: auto;
-		align-self: center;
-		padding: 8px 10px;
-		border: 2px solid var(--oak-light);
-		background: transparent;
-		color: var(--ink-soft);
-		font-family: var(--font-body);
-		font-size: 13px;
-		cursor: pointer;
-		white-space: nowrap;
-	}
-
-	.logs:hover {
-		border-color: var(--gold);
-		color: var(--ink);
-	}
-
-	/* Something has been logged as wrong: say so on the bar, not just in the panel. */
-	.logs.alert {
-		border-color: var(--crimson);
-		background: rgba(180, 40, 30, 0.12);
-		color: var(--crimson);
-		font-weight: 600;
 	}
 
 	.leave {
@@ -410,9 +355,8 @@
 			font-size: 9px;
 		}
 
-		.leave,
-		.logs {
-			padding: 6px 8px;
+		.leave {
+			padding: 6px 10px;
 			font-size: 12px;
 		}
 

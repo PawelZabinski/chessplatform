@@ -118,6 +118,19 @@ export class BoardController {
 	/** Kept so the loss animation can find the rendered board. */
 	private readonly element: HTMLElement;
 
+	/**
+	 * Real-time mode: the colour this client plays, or null for ordinary chess.
+	 *
+	 * In multiplayer neither player waits for the other, so "whose turn is it"
+	 * stops being a meaningful gate — both sides act on one board. The board
+	 * therefore forces the side-to-move to this colour whenever it recomputes
+	 * what you may pick up, exactly as the server does when it validates. Every
+	 * other rule of chess still applies.
+	 */
+	private realTimeColour: 'w' | 'b' | null = null;
+	/** While true the local player may not move: their cooldown is running. */
+	private cooling = false;
+
 	constructor(element: HTMLElement, callbacks: BoardCallbacks = {}) {
 		this.element = element;
 		this.callbacks = callbacks;
@@ -196,6 +209,64 @@ export class BoardController {
 		this.opponent = provider;
 	}
 
+	/** Switches the board into turn-free play as `colour`. */
+	setRealTime(colour: 'w' | 'b' | null) {
+		this.realTimeColour = colour;
+		this.syncGround();
+	}
+
+	/** Locks the board for the duration of a move cooldown. */
+	setCooling(cooling: boolean) {
+		if (this.cooling === cooling) return;
+		this.cooling = cooling;
+		this.syncGround();
+	}
+
+	/**
+	 * Rewrites the side-to-move without otherwise touching the position.
+	 *
+	 * The en-passant square goes with it: that right belonged to the colour that
+	 * is no longer on move, and leaving it behind lets chess.js offer a capture
+	 * that the server would reject.
+	 */
+	private forceTurn(colour: 'w' | 'b'): boolean {
+		const parts = this.chess.fen().split(' ');
+		if (parts[1] === colour) return true;
+		parts[1] = colour;
+		parts[3] = '-';
+		try {
+			this.chess.load(parts.join(' '));
+			return true;
+		} catch {
+			return false;
+		}
+	}
+
+	/** Applies a remote player's move in real-time mode, whatever the turn says. */
+	applyRemoteMove(lan: string, colour: 'w' | 'b'): boolean {
+		this.forceTurn(colour);
+		const ok = this.applyMove(lan);
+		// Hand the board back to us so our own pieces are immediately live again.
+		if (ok && this.realTimeColour) {
+			this.forceTurn(this.realTimeColour);
+			this.syncGround();
+		}
+		return ok;
+	}
+
+	/** Replaces the position from the server's authoritative FEN. */
+	resync(fen: string) {
+		try {
+			this.chess.load(fen);
+		} catch {
+			log.error('board', 'Server sent a FEN we cannot load', { fen });
+			return;
+		}
+		if (this.realTimeColour) this.forceTurn(this.realTimeColour);
+		this.syncGround();
+		this.callbacks.onPositionChange?.(this.chess.fen());
+	}
+
 	/**
 	 * Enters or leaves slow-motion on the board.
 	 *
@@ -228,6 +299,7 @@ export class BoardController {
 	 */
 	load(fen: string = START_FEN) {
 		this.positionToken += 1;
+		this.cooling = false;
 		this.opponent?.abort?.();
 		clearTimeout(this.pendingReply);
 
@@ -262,6 +334,7 @@ export class BoardController {
 	/** Applies a move made by the local player on the board. */
 	private onUserMove(orig: Key, dest: Key) {
 		const promotion = this.isPromotion(orig as Square, dest as Square) ? 'q' : undefined;
+		if (this.realTimeColour) this.forceTurn(this.realTimeColour);
 
 		let move: Move;
 		try {
@@ -312,8 +385,9 @@ export class BoardController {
 	}
 
 	private syncGround() {
+		if (this.realTimeColour) this.forceTurn(this.realTimeColour);
 		const turn = this.chess.turn();
-		const dests = this.legalDests();
+		const dests = this.cooling ? new Map<Key, Key[]>() : this.legalDests();
 		this.ground.set({
 			fen: this.chess.fen(),
 			turnColor: this.colourName(turn),
@@ -326,7 +400,7 @@ export class BoardController {
 		// again there will be a line saying so, with the position that caused it.
 		const yoursToMove = !this.opponent || turn !== this.opponent.colour;
 		log.invariant(
-			!(yoursToMove && !this.gameOver && dests.size === 0),
+			!(yoursToMove && !this.gameOver && !this.cooling && dests.size === 0),
 			'board',
 			'Player to move but no legal destinations offered',
 			{ fen: this.chess.fen(), realMoves: this.chess.moves().length }
@@ -335,6 +409,9 @@ export class BoardController {
 
 	/** Returns true when the game is over (and the callback has been fired). */
 	private reportGameOverIfFinished(): boolean {
+		// The server decides when a networked game is over; a client reaching its
+		// own conclusion first would desync the two boards.
+		if (this.realTimeColour) return false;
 		const detail = this.gameOverDetail();
 		if (!detail) return false;
 
@@ -431,6 +508,9 @@ export class BoardController {
 	}
 
 	private maybePlayOpponent() {
+		// In real-time play the opponent is a person on another socket; nothing
+		// here should ever prompt a move.
+		if (this.realTimeColour) return;
 		if (!this.opponent || this.gameOver) return;
 		if (this.chess.turn() !== this.opponent.colour) return;
 		// Belt and braces: an engine asked to search a kingless position hangs.
@@ -462,6 +542,7 @@ export class BoardController {
 
 	/** Only the side the opponent is not playing may be dragged. */
 	private playerColour(): 'white' | 'black' | 'both' {
+		if (this.realTimeColour) return this.colourName(this.realTimeColour);
 		if (!this.opponent) return 'both';
 		return this.opponent.colour === 'w' ? 'black' : 'white';
 	}

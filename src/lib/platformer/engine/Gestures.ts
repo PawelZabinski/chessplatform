@@ -67,12 +67,24 @@ export class Gestures {
 		if (this.pointerId !== null) return;
 
 		this.pointerId = event.pointerId;
-		this.target.setPointerCapture?.(event.pointerId);
 		this.anchorX = this.startX = event.clientX;
 		this.startY = event.clientY;
 		this.startedAt = performance.now();
 		this.travelled = 0;
 		this.swiped = false;
+
+		// Must come last, and must not be allowed to throw past this point.
+		// setPointerCapture rejects a pointer the browser does not consider active,
+		// and it used to run before the fields above were set — so the throw left
+		// `startedAt` stale, every tap measured as far too slow to count, and
+		// tapping did nothing at all while dragging still worked. Capture is an
+		// optimisation (it keeps a finger that slides off the element reporting to
+		// us); losing it is survivable, losing the tap is not.
+		try {
+			this.target.setPointerCapture?.(event.pointerId);
+		} catch {
+			/* Pointer already released or not capturable; gestures still work. */
+		}
 	};
 
 	private onMove = (event: PointerEvent) => {

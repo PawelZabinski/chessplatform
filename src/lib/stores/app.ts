@@ -14,7 +14,7 @@ export type Screen =
 	| { name: 'tower' }
 	| { name: 'leaderboard' }
 	| { name: 'lobby' }
-	| { name: 'play'; mode: 'tower' | 'endless'; floor?: number }
+	| { name: 'play'; mode: 'tower' | 'endless' | 'match'; floor?: number }
 	| { name: 'results'; outcome: RunOutcome };
 
 export const screen = writable<Screen>({ name: 'menu' });

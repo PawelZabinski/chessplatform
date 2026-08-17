@@ -2,9 +2,10 @@
 	import { TOTAL_FLOORS, floorByNumber } from '$game/levels';
 	import { tierLabel } from '$game/difficulty';
 	import type { RunOutcome } from '$lib/platformer/PlatformerGame';
-	import { leaderboard } from '$lib/stores/chess';
+	import { lastPlayerName, leaderboard } from '$lib/stores/chess';
 	import { towerProgress } from '$lib/stores/progress';
 	import { goto } from '$lib/stores/app';
+	import Modal from './Modal.svelte';
 	import Shell from './Shell.svelte';
 
 	export let outcome: RunOutcome;
@@ -28,7 +29,10 @@
 	const hasNext = cleared && nextFloor <= TOTAL_FLOORS;
 
 	let saved = false;
-	let name = '';
+	let asking = false;
+	let savedAs = '';
+	// Pre-filled with whoever saved last, so the usual answer is just "Save".
+	let name = lastPlayerName.read();
 
 	const title = outcome.abandoned
 		? outcome.mode === 'tower'
@@ -52,13 +56,17 @@
 
 	function save() {
 		if (saved) return;
+		const finalName = name.trim() || 'Anonymous';
 		leaderboard.add({
-			name: name.trim() || 'Anonymous',
+			name: finalName,
 			score: outcome.score,
 			stage: outcome.stageName,
 			gamesWon: outcome.gamesWon
 		});
+		if (name.trim()) lastPlayerName.write(name.trim());
+		savedAs = finalName;
 		saved = true;
+		asking = false;
 	}
 </script>
 
@@ -107,18 +115,11 @@
 		</button>
 
 		{#if !saved}
-			<div class="save">
-				<input
-					bind:value={name}
-					placeholder="Your name"
-					maxlength="18"
-					aria-label="Name for the leaderboard"
-					on:keydown={(e) => e.key === 'Enter' && save()}
-				/>
-				<button class="mv-button royal" on:click={save}>Record in the Hall</button>
-			</div>
+			<button class="mv-button royal" on:click={() => (asking = true)}>
+				Save to the Hall of Champions
+			</button>
 		{:else}
-			<p class="mv-caption centre mv-gold">Recorded ✓</p>
+			<p class="mv-caption centre mv-gold">Recorded as {savedAs} ✓</p>
 		{/if}
 
 		<button class="mv-button crimson" on:click={() => goto({ name: 'menu' })}>
@@ -126,6 +127,29 @@
 		</button>
 	{/if}
 </Shell>
+
+{#if asking}
+	<Modal title="Record this climb" onClose={() => (asking = false)}>
+		<p class="lede">
+			{outcome.score.toLocaleString()} points · {outcome.gamesWon} game{outcome.gamesWon === 1
+				? ''
+				: 's'} won
+		</p>
+		<!-- svelte-ignore a11y-autofocus -->
+		<input
+			class="mv-input"
+			bind:value={name}
+			placeholder="Your name"
+			maxlength="18"
+			autofocus
+			aria-label="Name for the leaderboard"
+			on:keydown={(e) => e.key === 'Enter' && save()}
+		/>
+		<!-- No cancel button: Modal already supplies Close, plus Escape and
+		     click-outside. Two ways to say "no" in one dialog is one too many. -->
+		<button class="mv-button royal save" on:click={save}>Save</button>
+	</Modal>
+{/if}
 
 <style>
 	.scroll {
@@ -184,20 +208,12 @@
 		text-align: center;
 	}
 
-	.save {
-		display: flex;
-		flex-direction: column;
-		gap: 10px;
+	.lede {
+		margin: 0 0 12px;
+		color: var(--ink-soft);
 	}
 
-	input {
-		width: 100%;
-		box-sizing: border-box;
-		padding: 12px 14px;
-		background: rgba(232, 216, 176, 0.92);
-		border: 2px solid var(--gold);
-		color: var(--ink);
-		font-family: var(--font-body);
-		font-size: 16px;
+	.save {
+		margin-top: 14px;
 	}
 </style>

@@ -1,31 +1,34 @@
+import { dev } from '$app/environment';
+
 /**
- * Diagnostics.
+ * Logging.
  *
- * This game has two halves that mutate each other's state — a spike in the
- * platformer edits the chess position, a chess move launches the climber — and
- * when something goes wrong the evidence is a board that has quietly stopped
- * accepting input. There is no stack trace to read, and on a phone there is no
- * console to read it in.
+ * Ordinary structured application logging: levelled, namespaced, written to the
+ * console, and quiet in production unless something is actually wrong. Nothing
+ * about it is part of the game's UI.
  *
- * So every state change that crosses between the halves, plus every decision
- * that can end a game, records a line here. The buffer is bounded and in memory
- * only; it costs nothing until something breaks, and then it is the difference
- * between "it froze" and knowing which piece was removed on which square and
- * what the resulting position was.
+ * Levels follow the usual convention — debug is development noise, info is
+ * lifecycle worth seeing, warn is a recoverable surprise, error is a bug. The
+ * threshold defaults to `debug` in dev and `warn` in a production build, and can
+ * be overridden at runtime without a rebuild:
  *
- * `invariant` is the important one: it records a condition that should be
- * impossible. The bug this was written for — a spike stripping White to a bare
- * king, leaving a position that was drawn but never reported, so the board
- * offered no legal moves and simply sat there — is exactly the shape of thing
- * that produces no error and no symptom except silence.
+ *   localStorage.setItem('chessplatform:log', 'debug')   // then reload
+ *
+ * A short in-memory ring buffer is kept as well, purely so that `log.dump()` in
+ * the console can print what led up to a problem — the same reason a server
+ * keeps recent request logs. It is not rendered anywhere.
+ *
+ * `invariant` records conditions that are supposed to be impossible. It exists
+ * because this game's characteristic failure is silence: a board that has
+ * quietly stopped accepting input produces no exception and no visible symptom.
  */
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
-export type LogArea = 'run' | 'board' | 'engine' | 'climb' | 'input' | 'app';
+export type LogArea = 'run' | 'board' | 'engine' | 'climb' | 'input' | 'net' | 'app';
+
+const ORDER: Record<LogLevel, number> = { debug: 10, info: 20, warn: 30, error: 40 };
 
 export interface LogEntry {
-	seq: number;
-	/** Milliseconds since the page loaded. */
 	at: number;
 	level: LogLevel;
 	area: LogArea;
@@ -33,101 +36,99 @@ export interface LogEntry {
 	data?: Record<string, unknown>;
 }
 
-/** Enough to cover a whole game without growing without bound. */
-const CAPACITY = 400;
+/** Enough recent history to explain a failure, small enough to ignore. */
+const CAPACITY = 200;
+const recent: LogEntry[] = [];
 
-const entries: LogEntry[] = [];
-let seq = 0;
-const listeners = new Set<(entries: LogEntry[]) => void>();
-
-/** Mirroring to the console is opt-in: it is noisy, and the panel is the point. */
-let mirror = false;
-
-function push(level: LogLevel, area: LogArea, message: string, data?: Record<string, unknown>) {
-	const entry: LogEntry = {
-		seq: (seq += 1),
-		at: typeof performance !== 'undefined' ? Math.round(performance.now()) : 0,
-		level,
-		area,
-		message,
-		data
-	};
-
-	entries.push(entry);
-	if (entries.length > CAPACITY) entries.splice(0, entries.length - CAPACITY);
-
-	// Warnings and errors always reach the console — those are the ones worth
-	// interrupting for, and they are rare enough not to spam.
-	if (mirror || level === 'warn' || level === 'error') {
-		const method = level === 'error' ? 'error' : level === 'warn' ? 'warn' : 'log';
-		console[method](`[${area}] ${message}`, data ?? '');
+function initialThreshold(): LogLevel {
+	if (typeof localStorage !== 'undefined') {
+		const override = localStorage.getItem('chessplatform:log');
+		if (override && override in ORDER) return override as LogLevel;
 	}
+	return dev ? 'debug' : 'warn';
+}
 
-	for (const listener of listeners) listener(entries);
+let threshold: LogLevel = 'warn';
+let resolved = false;
+
+function enabled(level: LogLevel) {
+	// Resolved lazily: the module is imported during SSR/prerender, where there
+	// is no localStorage to read the override from.
+	if (!resolved && typeof window !== 'undefined') {
+		threshold = initialThreshold();
+		resolved = true;
+	}
+	return ORDER[level] >= ORDER[threshold];
+}
+
+const STYLE: Record<LogLevel, string> = {
+	debug: 'color:#8a6f47',
+	info: 'color:#3b7dc9',
+	warn: 'color:#c9a227;font-weight:600',
+	error: 'color:#c0392b;font-weight:600'
+};
+
+function emit(level: LogLevel, area: LogArea, message: string, data?: Record<string, unknown>) {
+	const entry: LogEntry = { at: Date.now(), level, area, message, data };
+	recent.push(entry);
+	if (recent.length > CAPACITY) recent.shift();
+
+	if (!enabled(level)) return;
+
+	const method = level === 'debug' ? 'debug' : level === 'info' ? 'info' : level;
+	const args: unknown[] = [`%c${area}%c ${message}`, STYLE[level], 'color:inherit'];
+	if (data) args.push(data);
+	(console[method] as (...a: unknown[]) => void)(...args);
 }
 
 export const log = {
 	debug: (area: LogArea, message: string, data?: Record<string, unknown>) =>
-		push('debug', area, message, data),
+		emit('debug', area, message, data),
 	info: (area: LogArea, message: string, data?: Record<string, unknown>) =>
-		push('info', area, message, data),
+		emit('info', area, message, data),
 	warn: (area: LogArea, message: string, data?: Record<string, unknown>) =>
-		push('warn', area, message, data),
+		emit('warn', area, message, data),
 	error: (area: LogArea, message: string, data?: Record<string, unknown>) =>
-		push('error', area, message, data),
+		emit('error', area, message, data),
 
-	/**
-	 * Records a condition that is supposed to be impossible.
-	 *
-	 * Never throws: a broken invariant during play should leave a trail, not take
-	 * the game down on top of whatever the player was doing.
-	 */
+	/** Records an impossible condition. Never throws — a broken invariant during
+	 * play should leave a trail, not take the game down on top of the player. */
 	invariant(condition: boolean, area: LogArea, message: string, data?: Record<string, unknown>) {
 		if (condition) return true;
-		push('error', area, `INVARIANT: ${message}`, data);
+		emit('error', area, `INVARIANT: ${message}`, data);
 		return false;
 	},
 
-	all: () => [...entries],
-	clear: () => {
-		entries.length = 0;
-		for (const listener of listeners) listener(entries);
-	},
-	setMirror: (on: boolean) => {
-		mirror = on;
-	},
-
-	subscribe(listener: (entries: LogEntry[]) => void) {
-		listeners.add(listener);
-		listener(entries);
-		return () => listeners.delete(listener);
+	setLevel(level: LogLevel) {
+		threshold = level;
+		resolved = true;
+		try {
+			localStorage.setItem('chessplatform:log', level);
+		} catch {
+			/* Not persisted; still applies for this session. */
+		}
 	},
 
-	/** The whole buffer as text, for pasting into a bug report. */
-	asText() {
-		return entries
-			.map((e) => {
-				const t = (e.at / 1000).toFixed(2).padStart(7);
-				const body = e.data ? ` ${safeJson(e.data)}` : '';
-				return `${t}s ${e.level.toUpperCase().padEnd(5)} ${e.area.padEnd(6)} ${e.message}${body}`;
-			})
-			.join('\n');
-	}
+	/** Prints recent history as a table, for working out what led to a failure. */
+	dump() {
+		console.table(
+			recent.map((e) => ({
+				time: new Date(e.at).toISOString().slice(11, 23),
+				level: e.level,
+				area: e.area,
+				message: e.message,
+				data: e.data ? JSON.stringify(e.data) : ''
+			}))
+		);
+	},
+
+	recent: () => [...recent]
 };
 
-function safeJson(value: unknown): string {
-	try {
-		return JSON.stringify(value);
-	} catch {
-		return '[unserialisable]';
-	}
-}
-
 /**
- * Routes uncaught errors into the same buffer.
- *
- * A rejected promise inside the engine worker or an animation callback would
- * otherwise vanish into a console nobody is looking at.
+ * Routes uncaught errors and rejections into the same stream, so a failure
+ * inside a worker callback or an animation frame is reported like everything
+ * else rather than vanishing.
  */
 export function installGlobalErrorLogging() {
 	if (typeof window === 'undefined') return;
@@ -135,7 +136,7 @@ export function installGlobalErrorLogging() {
 	window.addEventListener('error', (event) => {
 		log.error('app', 'Uncaught error', {
 			message: event.message,
-			source: `${event.filename}:${event.lineno}`
+			source: `${event.filename}:${event.lineno}:${event.colno}`
 		});
 	});
 
@@ -143,6 +144,5 @@ export function installGlobalErrorLogging() {
 		log.error('app', 'Unhandled promise rejection', { reason: String(event.reason) });
 	});
 
-	// One handle for debugging from a desktop console or a remote inspector.
 	(window as unknown as Record<string, unknown>).chessplatformLog = log;
 }
