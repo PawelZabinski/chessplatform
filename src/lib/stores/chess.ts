@@ -1,5 +1,6 @@
 import { writable, get, type Readable } from 'svelte/store';
 import { Chess, type Move, type Piece, type Square } from 'chess.js';
+import { log } from '$lib/diagnostics';
 
 const INITIAL_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
@@ -33,7 +34,11 @@ type ChessStateStore = Readable<string> & {
 	addMove: (move: Move) => void;
 	/** Mirrors the board's position; the BoardController is the source of truth. */
 	setFen: (fen: string) => void;
-	removeRandomPiece: (colour?: PieceColor, callback?: (newFen: string) => void) => void;
+	/** Returns the piece a spike knocked off, or null if there was nothing to take. */
+	removeRandomPiece: (
+		colour?: PieceColor,
+		callback?: (newFen: string) => void
+	) => FallenPiece | null;
 	restoreFallenPiece: (colour?: PieceColor, callback?: (newFen: string) => void) => FallenPiece | null;
 	fallenCount: (colour?: PieceColor) => number;
 	/** Clears move history and fallen pieces before a new position is dealt. */
@@ -56,6 +61,8 @@ function createChessStateStore(): ChessStateStore {
 			set(fen);
 		},
 		removeRandomPiece(colour: PieceColor = 'w', callback?: (newFen: string) => void) {
+			let taken: FallenPiece | null = null;
+
 			update((fen) => {
 				const chess = new Chess(fen);
 				const removablePieces: FallenPiece[] = [];
@@ -70,16 +77,35 @@ function createChessStateStore(): ChessStateStore {
 					}
 				}
 
-				if (removablePieces.length > 0) {
-					const toRemove = removablePieces[Math.floor(Math.random() * removablePieces.length)];
-					chess.remove(toRemove.square);
-					fallen.push(toRemove);
+				if (removablePieces.length === 0) {
+					// Only the king left. Nothing to take, and the caller needs to know:
+					// silently doing nothing here is how a spike used to look like it
+					// had no effect at all.
+					log.warn('board', 'Spike hit but no piece could be taken', {
+						colour,
+						fen,
+						remaining: 'king only'
+					});
+					return fen;
 				}
 
+				const toRemove = removablePieces[Math.floor(Math.random() * removablePieces.length)];
+				chess.remove(toRemove.square);
+				fallen.push(toRemove);
+				taken = toRemove;
+
 				const newFen = chess.fen();
+				log.info('board', `Spike took ${toRemove.piece.type} on ${toRemove.square}`, {
+					colour,
+					remaining: removablePieces.length - 1,
+					fen: newFen
+				});
 				callback?.(newFen);
 				return newFen;
 			});
+
+			// TS narrows through the store callback; the assignment above is real.
+			return taken as FallenPiece | null;
 		},
 		/**
 		 * Puts the most recently lost piece back on its original square, provided that
@@ -105,6 +131,7 @@ function createChessStateStore(): ChessStateStore {
 				chess.put(candidate.piece, candidate.square);
 				fallen = fallen.filter((_, i) => i !== candidateIndex);
 				restored = candidate;
+				log.info('board', `Restored ${candidate.piece.type} to ${candidate.square}`);
 
 				const newFen = chess.fen();
 				callback?.(newFen);

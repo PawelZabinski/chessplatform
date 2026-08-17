@@ -1,3 +1,19 @@
+<script lang="ts">
+	import { onMount } from 'svelte';
+	import { installGlobalErrorLogging, log } from '$lib/diagnostics';
+
+	// Installed once, at the root, so anything thrown anywhere in the app lands in
+	// the same buffer the diagnostics panel reads.
+	onMount(() => {
+		installGlobalErrorLogging();
+		log.info('app', 'Session started', {
+			viewport: `${window.innerWidth}x${window.innerHeight}`,
+			dpr: window.devicePixelRatio,
+			touch: navigator.maxTouchPoints ?? 0
+		});
+	});
+</script>
+
 <svelte:head>
     <title>ChessPlatform — climb by playing chess</title>
 </svelte:head>

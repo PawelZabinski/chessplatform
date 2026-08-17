@@ -60,7 +60,7 @@ export class Input {
 		this.touchHeld.clear();
 	};
 
-	/** Called by the on-screen controls. */
+	/** Called by the on-screen controls for anything that is held down. */
 	setTouch(action: Action, down: boolean) {
 		if (down) {
 			if (!this.touchHeld.has(action)) this.pressed.add(action);
@@ -68,6 +68,23 @@ export class Input {
 		} else {
 			this.touchHeld.delete(action);
 		}
+	}
+
+	/**
+	 * A one-shot press with no hold, for gestures.
+	 *
+	 * A tap or a swipe has no "up" the game could wait for — the whole gesture is
+	 * already over by the time it is recognised. Latching the press directly lets
+	 * a flick read exactly like a key tap, and `endStep` still clears it if
+	 * nothing consumed it.
+	 */
+	pressTouch(action: Action) {
+		this.pressed.add(action);
+	}
+
+	/** Releases a held touch action without disturbing the keyboard. */
+	releaseTouch(action: Action) {
+		this.touchHeld.delete(action);
 	}
 
 	isHeld(action: Action): boolean {

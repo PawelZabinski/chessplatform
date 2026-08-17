@@ -96,8 +96,14 @@
 				controller?.load(detail?.fen);
 			},
 			configureEngine: (settings) => engine.configure(settings as EngineConfig),
-			removePiece: (colour = 'w') =>
-				chessState.removeRandomPiece(colour, (fen) => controller?.setFenSilently(fen)),
+			removePiece: (colour = 'w') => {
+				const lost = chessState.removeRandomPiece(colour, (fen) =>
+					controller?.setFenSilently(fen)
+				);
+				// After the position has been applied, so the ghost animates off an
+				// already-empty square rather than on top of the piece it replaces.
+				if (lost) controller?.markPieceLost(lost.square, lost.piece);
+			},
 			restorePiece: (colour = 'w') => {
 				chessState.restoreFallenPiece(colour, (fen) => controller?.setFenSilently(fen));
 			},
@@ -160,5 +166,72 @@
 	.board :global(.cg-wrap coords coord) {
 		font-family: 'Cinzel', Georgia, serif;
 		font-size: 9px;
+	}
+
+	/*
+	 * A piece knocked off by a spike.
+	 *
+	 * It has to read at a glance and from across the screen, because you are
+	 * looking at the climb when it happens: the square flares red, and the piece
+	 * itself recoils, tumbles and fades. Two separate elements so the halo can
+	 * pulse on the square while the piece leaves it.
+	 */
+	.board :global(cg-container piece.cp-lost) {
+		width: 12.5%;
+		height: 12.5%;
+		position: absolute;
+		z-index: 12;
+		pointer-events: none;
+		animation: cp-lost-piece 0.85s cubic-bezier(0.3, 0, 0.7, 1) forwards;
+	}
+
+	.board :global(cg-container .cp-lost-halo) {
+		width: 12.5%;
+		height: 12.5%;
+		position: absolute;
+		z-index: 11;
+		pointer-events: none;
+		background: radial-gradient(circle, rgba(214, 48, 40, 0.85) 0%, rgba(214, 48, 40, 0) 70%);
+		animation: cp-lost-halo 0.85s ease-out forwards;
+	}
+
+	@keyframes -global-cp-lost-piece {
+		0% {
+			transform: translate(0, 0) rotate(0deg) scale(1);
+			opacity: 1;
+			filter: none;
+		}
+		18% {
+			transform: translate(0, -14%) rotate(-9deg) scale(1.18);
+			opacity: 1;
+			filter: drop-shadow(0 0 6px rgba(255, 90, 70, 0.95)) saturate(1.6);
+		}
+		100% {
+			transform: translate(0, 46%) rotate(52deg) scale(0.62);
+			opacity: 0;
+			filter: drop-shadow(0 0 3px rgba(255, 90, 70, 0.4));
+		}
+	}
+
+	@keyframes -global-cp-lost-halo {
+		0% {
+			opacity: 0;
+			transform: scale(0.55);
+		}
+		25% {
+			opacity: 1;
+			transform: scale(1.15);
+		}
+		100% {
+			opacity: 0;
+			transform: scale(1.5);
+		}
+	}
+
+	/* Respect a system preference for less movement: keep the flash, drop the tumble. */
+	@media (prefers-reduced-motion: reduce) {
+		.board :global(cg-container piece.cp-lost) {
+			animation: cp-lost-halo 0.6s ease-out forwards;
+		}
 	}
 </style>

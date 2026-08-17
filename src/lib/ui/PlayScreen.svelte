@@ -77,10 +77,11 @@
 <div class="play">
 	<section class="climb" aria-label="The climb">
 		<div class="stage" bind:this={stage}></div>
-		<Hud {hud} {toasts} {banner} onLeave={leave} />
+		<!-- Before the HUD, so the HUD's own buttons win the hit test. -->
 		{#if touch}
-			<TouchControls input={game?.inputHandle ?? null} />
+			<TouchControls input={game?.inputHandle ?? null} {hud} />
 		{/if}
+		<Hud {hud} {toasts} {banner} {touch} onLeave={leave} />
 	</section>
 
 	<section class="board-side mv-backdrop" aria-label="The board">

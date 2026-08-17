@@ -1,7 +1,8 @@
 import { Chessground } from 'chessground';
 import type { Api as CgApi } from 'chessground/api';
 import type { Key } from 'chessground/types';
-import { Chess, SQUARES, type Move, type Square } from 'chess.js';
+import { Chess, SQUARES, type Move, type Piece, type Square } from 'chess.js';
+import { log } from '$lib/diagnostics';
 
 /**
  * The chess board.
@@ -68,6 +69,16 @@ export interface BoardCallbacks {
 
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
+/** chess.js piece letters to the class names chessground's sprite sheet uses. */
+const PIECE_CLASS: Record<string, string> = {
+	p: 'pawn',
+	n: 'knight',
+	b: 'bishop',
+	r: 'rook',
+	q: 'queen',
+	k: 'king'
+};
+
 /** Piece glide at normal speed, and the pause before the opponent replies. */
 const NORMAL_ANIM_MS = 180;
 const NORMAL_REPLY_DELAY_MS = 120;
@@ -104,7 +115,11 @@ export class BoardController {
 	private shiftDragFix?: (event: MouseEvent) => void;
 	private shiftDragTarget?: HTMLElement;
 
+	/** Kept so the loss animation can find the rendered board. */
+	private readonly element: HTMLElement;
+
 	constructor(element: HTMLElement, callbacks: BoardCallbacks = {}) {
+		this.element = element;
 		this.callbacks = callbacks;
 		this.chess.load(START_FEN);
 
@@ -298,18 +313,35 @@ export class BoardController {
 
 	private syncGround() {
 		const turn = this.chess.turn();
+		const dests = this.legalDests();
 		this.ground.set({
 			fen: this.chess.fen(),
 			turnColor: this.colourName(turn),
 			check: this.chess.inCheck() ? this.colourName(turn) : undefined,
-			movable: { color: this.playerColour(), dests: this.legalDests() }
+			movable: { color: this.playerColour(), dests }
 		});
+
+		// The shape of every board freeze this game has had: it is your move, the
+		// game is not over, and yet nothing can be picked up. If that is ever true
+		// again there will be a line saying so, with the position that caused it.
+		const yoursToMove = !this.opponent || turn !== this.opponent.colour;
+		log.invariant(
+			!(yoursToMove && !this.gameOver && dests.size === 0),
+			'board',
+			'Player to move but no legal destinations offered',
+			{ fen: this.chess.fen(), realMoves: this.chess.moves().length }
+		);
 	}
 
 	/** Returns true when the game is over (and the callback has been fired). */
 	private reportGameOverIfFinished(): boolean {
 		const detail = this.gameOverDetail();
 		if (!detail) return false;
+
+		log.info('board', `Game over: ${detail.reason}`, {
+			result: detail.result,
+			fen: this.chess.fen()
+		});
 
 		this.gameOver = true;
 		// No legal moves offered once the game is decided.
@@ -461,11 +493,90 @@ export class BoardController {
 		return c === 'w' ? 'white' : 'black';
 	}
 
-	/** Replaces the position without any game-over or opponent side effects. */
+	/**
+	 * Replaces the position without treating the change as a move.
+	 *
+	 * "Silently" means no move callback and no history — it is a spike editing the
+	 * board, not somebody playing. It does NOT mean unexamined, and the difference
+	 * caused a hang worth recording:
+	 *
+	 * A spike removes one of your pieces. Remove the last one and White is down to
+	 * a bare king, which is insufficient material — a decided game. Nothing
+	 * reported it, because this method skipped the game-over check, but
+	 * `legalDests` consults the same predicate and duly handed chessground an
+	 * empty map. The board then sat there fully rendered, refusing every piece,
+	 * with no result and no way out but the lava.
+	 *
+	 * So: still no move callback, but the position is re-examined exactly as a
+	 * played move would be. An edit that ends the game ends it.
+	 */
 	setFenSilently(fen: string) {
+		// Any engine reply already in flight was computed against the old position;
+		// the piece it intends to move may be the one that was just removed.
+		this.positionToken += 1;
+		this.opponent?.abort?.();
+		clearTimeout(this.pendingReply);
+
 		this.chess.load(fen);
 		this.syncGround();
 		this.callbacks.onPositionChange?.(this.chess.fen());
+
+		log.info('board', 'Position edited', { fen: this.chess.fen(), turn: this.chess.turn() });
+
+		if (this.reportGameOverIfFinished()) return;
+		// The edit may also have left the opponent on move with no reply pending.
+		this.maybePlayOpponent();
+	}
+
+	/**
+	 * Plays a piece being knocked off the board by a spike.
+	 *
+	 * Without this a piece just silently ceased to exist between one glance and
+	 * the next — you would notice a rook was missing several moves later and have
+	 * no idea when or how it went. The ghost is a real chessground `<piece>`
+	 * element, so it is the same sprite in the same place, and it is drawn *after*
+	 * the position has already been updated: the square is empty underneath and
+	 * the ghost is what you see leaving it.
+	 *
+	 * Purely decorative — it owns no state and cleans itself up, so a piece lost
+	 * during a reload or a page teardown cannot leave anything behind.
+	 */
+	markPieceLost(square: Square, piece: Piece) {
+		// cg-container, not cg-board: chessground diffs the contents of cg-board on
+		// every render and would throw away a stray child. The container has the
+		// same geometry and is left alone.
+		const board = this.element.querySelector('cg-container');
+		if (!board) return;
+
+		const file = square.charCodeAt(0) - 97; // 'a' → 0
+		const rank = Number(square.charAt(1));
+		if (!Number.isFinite(rank) || file < 0 || file > 7) return;
+
+		// The board is always drawn from White's side, so a1 is bottom-left.
+		const left = file * 12.5;
+		const top = (8 - rank) * 12.5;
+
+		const ghost = document.createElement('piece');
+		ghost.className = `${piece.color === 'w' ? 'white' : 'black'} ${PIECE_CLASS[piece.type]} cp-lost`;
+		ghost.style.left = `${left}%`;
+		ghost.style.top = `${top}%`;
+
+		const halo = document.createElement('div');
+		halo.className = 'cp-lost-halo';
+		halo.style.left = `${left}%`;
+		halo.style.top = `${top}%`;
+
+		board.appendChild(halo);
+		board.appendChild(ghost);
+
+		const remove = () => {
+			ghost.remove();
+			halo.remove();
+		};
+		ghost.addEventListener('animationend', remove);
+		// Belt and braces: if the animation never runs (reduced motion, a
+		// backgrounded tab), the ghost must still not become permanent furniture.
+		setTimeout(remove, 1600);
 	}
 
 	destroy() {

@@ -19,7 +19,8 @@ import {
 } from '$game/stages';
 import { themeForStage, themeForWing, type TerrainTheme } from '$game/world/themes';
 import { LEVELS_PER_COMBO_STEP, MAX_COMBO_MULTIPLIER } from '$game/config';
-import { Input } from './engine/Input';
+import { log } from '$lib/diagnostics';
+import { Input, isTouchDevice } from './engine/Input';
 import { Loop } from './engine/Loop';
 import { Surface } from './engine/Surface';
 import { prewarmTextures } from './render/painters';
@@ -139,6 +140,9 @@ export class PlatformerGame {
 	private slowCharge = 0;
 	private slowUntil = 0;
 
+	/** How to tell the player to spend slow motion, in their own input language. */
+	private readonly slowHint = isTouchDevice() ? 'tap ◑' : 'Q';
+
 	private cameraY = 0;
 	private ended = false;
 	private completing = false;
@@ -211,6 +215,12 @@ export class PlatformerGame {
 			this.tier = tierFor(this.stage.index, this.gamesWon);
 			this.callbacks.loadPosition({ engine: engineForTier(this.tier) });
 		}
+
+		log.info('run', `Run started: ${this.mode}`, {
+			floor: this.floor?.floor,
+			floorName: this.floor?.name,
+			view: `${Math.round(width)}x${Math.round(height)}`
+		});
 
 		this.loop.start();
 		this.publishHud();
@@ -362,6 +372,10 @@ export class PlatformerGame {
 				continue;
 
 			spike.alive = false;
+			log.info('climb', 'Spike hit', {
+				at: `${Math.round(spike.x)},${Math.round(spike.y)}`,
+				band: this.maxBand
+			});
 			this.callbacks.removePiece();
 			this.cleanStreak = 0;
 			this.combo = 1;
@@ -389,7 +403,7 @@ export class PlatformerGame {
 		const wasReady = this.slowCharge >= SLOWMO_MIN_CHARGE;
 		this.slowCharge = Math.min(1, this.slowCharge + gained * SLOWMO_CHARGE_PER_BAND);
 		if (!wasReady && this.slowCharge >= SLOWMO_MIN_CHARGE && this.slowUntil === 0) {
-			this.toast('Slow motion ready — Q', 'cool');
+			this.toast(`Slow motion ready — ${this.slowHint}`, 'cool');
 		}
 
 		this.stage = stageForLevel(this.maxBand);
