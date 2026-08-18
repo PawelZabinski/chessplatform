@@ -16,12 +16,17 @@
 	const cleared = outcome.mode === 'tower' && outcome.result >= 0.5 && !outcome.abandoned;
 	const won = outcome.result === 1 && !outcome.abandoned;
 
+	// A floor also clears on stars alone: a climb that reached the first mark is
+	// progress even if the game itself was only drawn.
+	const stars = outcome.stars ?? 0;
+
 	if (cleared && outcome.floor) {
 		towerProgress.record(
 			outcome.floor,
 			outcome.result === 1 ? 'won' : 'drawn',
 			outcome.movesPlayed,
-			outcome.score
+			outcome.score,
+			stars
 		);
 	}
 
@@ -175,6 +180,31 @@
 		border: 0;
 		border-top: 1px solid var(--parchment-edge);
 		margin: 16px 0;
+	}
+
+	.stars {
+		display: flex;
+		justify-content: center;
+		gap: 8px;
+		font-size: clamp(26px, 5vw, 38px);
+		line-height: 1;
+		margin-bottom: 10px;
+	}
+
+	.stars span {
+		color: rgba(138, 111, 71, 0.4);
+	}
+
+	.stars span.on {
+		color: var(--gold);
+		text-shadow: 0 0 10px rgba(240, 210, 100, 0.6);
+	}
+
+	.stars-note {
+		margin: 0 0 14px;
+		font-family: var(--font-body);
+		font-size: 13px;
+		color: var(--ink-soft);
 	}
 
 	.score {

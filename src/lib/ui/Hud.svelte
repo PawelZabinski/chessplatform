@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { STAR_MARKS } from '$game/summit';
 	import type { Banner, HudState, Toast } from '$lib/platformer/PlatformerGame';
 
 	export let hud: HudState | null = null;
@@ -83,6 +84,31 @@
 			</div>
 		{/if}
 	</div>
+
+	<!--
+		The summit gauge.
+
+		Vertical and against the edge because it maps onto the thing it measures:
+		the tower goes up, so the meter does too, and a glance tells you how far is
+		left without reading anything. Kept faint until a star is close, since for
+		most of a floor it is context rather than information.
+	-->
+	{#if hud?.summit}
+		<div class="summit" aria-label="Progress to the summit">
+			<div class="shaft">
+				<div class="climbed" style:height="{Math.round(hud.summitProgress * 100)}%"></div>
+				{#each STAR_MARKS as mark, i}
+					<span
+						class="mark"
+						class:earned={hud.stars > i}
+						style:bottom="{mark * 100}%"
+						aria-hidden="true">★</span
+					>
+				{/each}
+			</div>
+			<span class="cap">{Math.round(hud.summitProgress * 100)}%</span>
+		</div>
+	{/if}
 
 	{#if banner}
 		<div class="banner">
@@ -253,6 +279,69 @@
 	.meter.slow.active {
 		opacity: 1;
 		color: #cfe7ff;
+	}
+
+	.summit {
+		position: absolute;
+		right: 10px;
+		top: 50%;
+		transform: translateY(-50%);
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 6px;
+		pointer-events: none;
+	}
+
+	.shaft {
+		position: relative;
+		width: 8px;
+		height: min(38dvh, 260px);
+		background: rgba(11, 7, 4, 0.55);
+		border: 1px solid rgba(201, 162, 39, 0.5);
+	}
+
+	.climbed {
+		position: absolute;
+		left: 0;
+		bottom: 0;
+		width: 100%;
+		background: linear-gradient(0deg, var(--gold), var(--gold-bright));
+		transition: height 0.25s ease-out;
+	}
+
+	.mark {
+		position: absolute;
+		left: 50%;
+		transform: translate(-50%, 50%);
+		font-size: 12px;
+		line-height: 1;
+		color: rgba(232, 216, 176, 0.45);
+		text-shadow: 0 1px 2px #000;
+		transition: color 0.2s ease;
+	}
+
+	.mark.earned {
+		color: var(--gold-bright);
+		text-shadow: 0 0 6px rgba(240, 210, 100, 0.8);
+	}
+
+	.cap {
+		font-size: 10px;
+		letter-spacing: 0.1em;
+		color: rgba(232, 216, 176, 0.7);
+		text-shadow: 0 1px 2px #000;
+	}
+
+	/* Phones: the gauge stays, the readout goes — the bar is the message. */
+	@media (max-width: 640px) {
+		.shaft {
+			height: min(30dvh, 180px);
+		}
+
+		.cap {
+			display: none;
+		}
 	}
 
 	.banner {

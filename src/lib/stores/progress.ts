@@ -1,5 +1,6 @@
 import { writable, get, type Readable } from 'svelte/store';
 import { TOTAL_FLOORS } from '../../game/levels';
+import type { Stars } from '../../game/summit';
 
 /**
  * Tower progress, persisted to localStorage.
@@ -18,12 +19,23 @@ export interface FloorRecord {
 	bestMoves: number;
 	/** Best climb score recorded on this floor. */
 	bestScore: number;
+	/** Best stars earned, 0–3. Absent on records saved before stars existed. */
+	stars?: Stars;
 }
 
 export type ProgressState = Record<number, FloorRecord>;
 
 type ProgressStore = Readable<ProgressState> & {
-	record: (floor: number, result: FloorResult, moves: number, score: number) => void;
+	record: (
+		floor: number,
+		result: FloorResult,
+		moves: number,
+		score: number,
+		stars?: Stars
+	) => void;
+	/** Stars banked on a floor, and the total across the tower. */
+	starsFor: (floor: number) => Stars;
+	totalStars: () => number;
 	isUnlocked: (floor: number) => boolean;
 	isCleared: (floor: number) => boolean;
 	highestUnlocked: () => number;
@@ -55,7 +67,14 @@ function load(): ProgressState {
 				typeof rec.bestMoves === 'number' &&
 				typeof rec.bestScore === 'number'
 			) {
-				state[floor] = { result: rec.result, bestMoves: rec.bestMoves, bestScore: rec.bestScore };
+				state[floor] = {
+					result: rec.result,
+					bestMoves: rec.bestMoves,
+					bestScore: rec.bestScore,
+					// Older saves have no stars; treat a past win as a full clear so
+					// nobody is quietly demoted by an update.
+					stars: clampStars(rec.stars ?? (rec.result === 'won' ? 3 : 0))
+				};
 			}
 		}
 		return state;
@@ -78,7 +97,7 @@ function createProgressStore(): ProgressStore {
 
 	const store: ProgressStore = {
 		subscribe,
-		record(floor, result, moves, score) {
+		record(floor, result, moves, score, stars = 0) {
 			update((state) => {
 				const existing = state[floor];
 				// A win always supersedes a draw; otherwise keep the better attempt.
@@ -92,12 +111,20 @@ function createProgressStore(): ProgressStore {
 					[floor]: {
 						result: better ? result : existing.result,
 						bestMoves: better ? moves : Math.min(existing.bestMoves, moves),
-						bestScore: Math.max(existing?.bestScore ?? 0, score)
+						bestScore: Math.max(existing?.bestScore ?? 0, score),
+						// Stars only ever go up: a worse later run must not undo them.
+						stars: clampStars(Math.max(existing?.stars ?? 0, stars))
 					}
 				};
 				persist(next);
 				return next;
 			});
+		},
+		starsFor(floor) {
+			return get({ subscribe })[floor]?.stars ?? 0;
+		},
+		totalStars() {
+			return Object.values(get({ subscribe })).reduce((sum, rec) => sum + (rec.stars ?? 0), 0);
 		},
 		isUnlocked(floor) {
 			if (floor <= 1) return true;
@@ -125,6 +152,10 @@ function createProgressStore(): ProgressStore {
 	};
 
 	return store;
+}
+
+function clampStars(value: number): Stars {
+	return Math.max(0, Math.min(3, Math.round(value))) as Stars;
 }
 
 export const towerProgress = createProgressStore();

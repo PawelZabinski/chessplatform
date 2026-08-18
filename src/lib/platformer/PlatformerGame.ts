@@ -11,6 +11,7 @@ import {
 import { engineForTier, tierFor, tierLabel } from '$game/difficulty';
 import { engineForFloor, floorByNumber, type TowerFloor } from '$game/levels';
 import { liftForMove, type LiftMove } from '$game/lift';
+import { MAX_STARS, starsForHeight, summitFor, type Stars } from '$game/summit';
 import {
 	LEVELS_PER_STAGE,
 	levelsUntilNextStage,
@@ -61,6 +62,12 @@ export interface HudState {
 	slowRemaining: number;
 	danger: number;
 	altitude: number;
+	/** Bands to take the floor by height alone. 0 outside the tower. */
+	summit: number;
+	/** How far up the summit the climber is, 0–1. */
+	summitProgress: number;
+	/** Stars banked by height so far. */
+	stars: Stars;
 }
 
 export interface RunOutcome {
@@ -75,6 +82,10 @@ export interface RunOutcome {
 	gamesWon: number;
 	tier: number;
 	abandoned?: boolean;
+	/** Stars earned on a tower floor, 0–3. */
+	stars?: Stars;
+	/** True when the floor was taken by reaching the summit rather than by chess. */
+	bySummit?: boolean;
 }
 
 export interface Toast {
@@ -135,6 +146,10 @@ export class PlatformerGame {
 	private gamesWon = 0;
 	private tier = 1;
 	private movesBanked = 0;
+	/** Bands to the summit of the current floor; 0 when there is no summit. */
+	private summit = 0;
+	/** Highest star mark already announced, so each is celebrated once. */
+	private starsShown = 0;
 
 	private controlUntil = 0;
 	private slowCharge = 0;
@@ -190,6 +205,8 @@ export class PlatformerGame {
 
 		this.stage = stageForLevel(0);
 		this.theme = this.themeForLevel(0);
+		this.summit = this.floor ? summitFor(this.floor) : 0;
+		this.starsShown = 0;
 
 		const { width, height } = this.surface;
 		const baseline = height;
@@ -406,11 +423,37 @@ export class PlatformerGame {
 			this.toast(`Slow motion ready — ${this.slowHint}`, 'cool');
 		}
 
+		this.checkSummit();
+
 		this.stage = stageForLevel(this.maxBand);
 		if (this.stage.index > previousStage) this.onStageCleared(previousStage);
 
 		this.world.ensureGenerated(this.maxBand);
 		this.world.prune(this.player.feetY + this.surface.height * 2.5);
+	}
+
+	/**
+	 * Height as a route to victory.
+	 *
+	 * Reaching the summit takes the floor outright — the same result as a
+	 * checkmate, because out-climbing the position is meant to be a real
+	 * alternative to out-playing it rather than a consolation.
+	 */
+	private checkSummit() {
+		if (!this.summit || this.ended || this.completing) return;
+
+		const stars = starsForHeight(this.maxBand, this.summit);
+		while (this.starsShown < stars) {
+			this.starsShown += 1;
+			this.toast(
+				this.starsShown >= MAX_STARS ? 'Summit ★★★' : `★ ${this.starsShown} of ${MAX_STARS}`,
+				'gold'
+			);
+		}
+
+		if (this.maxBand >= this.summit) {
+			this.playFloorCompletion('You reached the summit.', 1, 0, true);
+		}
 	}
 
 	private advanceCombo() {
@@ -563,7 +606,12 @@ export class PlatformerGame {
 	 * climber and carries them into the next floor, rather than cutting straight
 	 * to a results screen.
 	 */
-	private playFloorCompletion(reason: string, result: number, movesPlayed: number) {
+	private playFloorCompletion(
+		reason: string,
+		result: number,
+		movesPlayed: number,
+		bySummit = false
+	) {
 		this.completing = true;
 		this.world.seal(this.player.y + 40);
 		this.player.scripted = true;
@@ -571,7 +619,7 @@ export class PlatformerGame {
 		this.player.vy = 0;
 
 		this.callbacks.onBanner({
-			kicker: 'FLOOR CLEARED',
+			kicker: bySummit ? 'SUMMIT REACHED' : 'FLOOR CLEARED',
 			title: this.floor?.name ?? '',
 			accent: '#f6e2a0'
 		});
@@ -593,13 +641,19 @@ export class PlatformerGame {
 				requestAnimationFrame(lift);
 			} else {
 				this.callbacks.onBanner(null);
-				this.endRun(reason, result, false, movesPlayed);
+				this.endRun(reason, result, false, movesPlayed, bySummit);
 			}
 		};
 		requestAnimationFrame(lift);
 	}
 
-	private endRun(reason: string, result: number, abandoned = false, movesPlayed = 0) {
+	private endRun(
+		reason: string,
+		result: number,
+		abandoned = false,
+		movesPlayed = 0,
+		bySummit = false
+	) {
 		if (this.ended) return;
 		this.ended = true;
 		this.loop.stop();
@@ -621,8 +675,26 @@ export class PlatformerGame {
 			movesPlayed: this.movesBanked + movesPlayed,
 			gamesWon: this.gamesWon,
 			tier: this.tier,
-			abandoned
+			abandoned,
+			stars: this.awardedStars(result, abandoned, bySummit),
+			bySummit
 		});
+	}
+
+	/**
+	 * Stars to bank for this attempt.
+	 *
+	 * A checkmate is worth all three whatever the altitude: the victory fling
+	 * carries the climber to the top anyway, and making the player watch an
+	 * animation to collect stars they have already earned is ceremony. Anything
+	 * else — a draw, or walking away — banks the height actually reached, which
+	 * is what makes climbing worth doing in a position that is already winning.
+	 */
+	private awardedStars(result: number, abandoned: boolean, bySummit: boolean): Stars {
+		if (!this.summit) return 0;
+		if (bySummit) return MAX_STARS as Stars;
+		if (result === 1 && !abandoned) return MAX_STARS as Stars;
+		return starsForHeight(this.maxBand, this.summit);
 	}
 
 	// ── Output ─────────────────────────────────────────────────────────────
@@ -650,7 +722,10 @@ export class PlatformerGame {
 			slowActive: slowRemaining > 0,
 			slowRemaining,
 			danger: this.lava.proximity(this.player.feetY),
-			altitude: Math.min(1, this.maxBand / 45)
+			altitude: Math.min(1, this.maxBand / 45),
+			summit: this.summit,
+			summitProgress: this.summit ? Math.min(1, this.maxBand / this.summit) : 0,
+			stars: this.summit ? starsForHeight(this.maxBand, this.summit) : 0
 		});
 	}
 

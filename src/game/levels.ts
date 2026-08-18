@@ -34,6 +34,11 @@ export interface TowerFloor {
 	engine: EngineSettings;
 	/** Lava rise rate in px/s. 0 disables it. */
 	lavaSpeed: number;
+	/**
+	 * Bands to the summit, overriding the default from the floor number. Set it
+	 * when a position wants the climb and the chess to finish at different paces.
+	 */
+	summit?: number;
 	rules: FieldRules;
 }
 

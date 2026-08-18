@@ -22,6 +22,7 @@
 
 	$: progress = $towerProgress;
 	$: cleared = Object.keys(progress).length;
+	$: stars = towerProgress.totalStars();
 	$: nextFloor = towerProgress.highestUnlocked();
 
 	function open(floor: TowerFloor) {
@@ -50,7 +51,9 @@
 <div class="screen mv-backdrop">
 	<header class="top">
 		<h1 class="mv-title">The Tower</h1>
-		<p class="mv-caption">{cleared} of {TOTAL_FLOORS} floors cleared</p>
+		<p class="mv-caption">
+			{cleared} of {TOTAL_FLOORS} floors cleared · <span class="mv-gold">{stars} ★</span>
+		</p>
 		<div class="actions">
 			<button class="chip" on:click={() => (showKey = true)}>What the marks mean</button>
 			<button class="chip crimson" on:click={() => goto({ name: 'menu' })}>Return to Gate</button>
@@ -90,7 +93,13 @@
 				</span>
 				<span class="mark" aria-hidden="true">
 					{#if record}
-						{record.result === 'won' ? '★' : '½'}
+						{#if (record.stars ?? 0) > 0}
+							<span class="stars">
+								{#each [0, 1, 2] as i}<span class:on={(record.stars ?? 0) > i}>★</span>{/each}
+							</span>
+						{:else}
+							½
+						{/if}
 					{:else if unlocked}
 						▸
 					{:else}
@@ -117,12 +126,23 @@
 		<p class="lede">The shaft runs bottom to top: the Gate below, the Crown above.</p>
 		<dl class="key">
 			<dt><span class="swatch star">★</span></dt>
-			<dd><b>Won.</b> You checkmated the position on this floor.</dd>
+			<dd>
+				<b>Stars are height.</b> Every floor has a summit, and the three marks up the
+				gauge are earned by climbing. Reach the summit and you take the floor
+				outright, whatever the board says.
+			</dd>
+
+			<dt><span class="swatch star">★★★</span></dt>
+			<dd>
+				<b>Checkmate pays all three.</b> The victory fling carries you over the summit
+				anyway, so there is nothing left to climb for.
+			</dd>
 
 			<dt><span class="swatch half">½</span></dt>
 			<dd>
-				<b>Held a draw.</b> Also a clear. On the upper floors you start in a lost
-				position, so surviving to a draw is the objective.
+				<b>Held a draw, low down.</b> Still a clear, and it still opens the floor
+				above — on the upper floors you begin in a lost position, so surviving to a
+				draw is the objective. Draw higher up and you keep the stars you climbed to.
 			</dd>
 
 			<dt><span class="swatch open">▸</span></dt>
@@ -255,7 +275,7 @@
 		width: min(620px, 100%);
 		flex: 0 0 auto;
 		display: grid;
-		grid-template-columns: 54px 1fr 34px;
+		grid-template-columns: 54px 1fr 48px;
 		align-items: center;
 		gap: 12px;
 		padding: 12px 14px;
@@ -351,6 +371,22 @@
 		color: var(--gold-bright);
 	}
 
+	/* Three small stars read as a rating; one big one reads as a tick. */
+	.stars {
+		display: inline-flex;
+		gap: 1px;
+		font-size: 10px;
+		line-height: 1;
+	}
+
+	.stars span {
+		color: rgba(232, 216, 176, 0.3);
+	}
+
+	.stars span.on {
+		color: var(--gold-bright);
+	}
+
 	.storey.cleared .mark {
 		color: #9ce0a8;
 	}
@@ -392,6 +428,7 @@
 	}
 
 	.swatch {
+		font-size: 11px;
 		display: inline-grid;
 		place-items: center;
 		width: 32px;
