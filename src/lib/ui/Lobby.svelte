@@ -18,6 +18,9 @@
 		isCompleteRoomCode,
 		normaliseRoomCode
 	} from '$game/multiplayer/roomCode';
+	import { parsePosition } from '$game/multiplayer/openings';
+	import { colourFor } from '$game/multiplayer/palette';
+	import { MAX_PLAYERS } from '$game/multiplayer/protocol';
 	import { goto } from '$lib/stores/app';
 	import { isMultiplayerAvailable, matchState } from '$lib/stores/match';
 	import { lastPlayerName } from '$lib/stores/chess';
@@ -33,6 +36,28 @@
 	// placeholder instead: a real value would have to be deleted before typing.
 	let name = lastPlayerName.read();
 	let ready = false;
+	let positionText = '';
+	let positionNote = '';
+
+	// A duel is only possible head to head; any bigger room races instead. The
+	// coercion happens where the count changes rather than reactively — a
+	// reactive statement that writes back to `config` would depend on itself.
+	// The server enforces the same rule, so this is only about what is shown.
+	$: canDuel = config.maxPlayers === 2;
+
+	function applyPosition() {
+		const parsed = parsePosition(positionText);
+		if (!parsed.ok) {
+			positionNote = parsed.error;
+			return;
+		}
+		config.customFen = parsed.fen;
+		config.opening = 'custom';
+		config = config;
+		positionNote =
+			parsed.from === 'pgn' ? 'PGN read — starting from its final position.' : 'Position set.';
+		if (match.seat && isHost) matchState.setConfig(config);
+	}
 
 	const available = isMultiplayerAvailable;
 
@@ -156,6 +181,57 @@
 				</button>
 			</div>
 			<div class="row">
+				<span>Players</span>
+				<button
+					class="opt"
+					on:click={() => {
+						config.maxPlayers = config.maxPlayers >= MAX_PLAYERS ? 2 : config.maxPlayers + 1;
+						if (config.maxPlayers !== 2) config.chessMode = 'solo';
+						config = config;
+						if (match.seat && isHost) matchState.setConfig(config);
+					}}
+				>
+					{config.maxPlayers}
+				</button>
+			</div>
+			<div class="row">
+				<span>Chess</span>
+				<button
+					class="opt"
+					disabled={!canDuel}
+					title={canDuel ? '' : 'A duel needs exactly two players'}
+					on:click={() => {
+						config.chessMode = config.chessMode === 'shared' ? 'solo' : 'shared';
+						config = config;
+						if (match.seat && isHost) matchState.setConfig(config);
+					}}
+				>
+					{config.chessMode === 'shared' ? 'Play each other' : 'Each vs the engine'}
+				</button>
+			</div>
+			<div class="row">
+				<span>Opening</span>
+				<button
+					class="opt"
+					on:click={() => {
+						config.opening =
+							config.opening === 'standard'
+								? 'random'
+								: config.opening === 'random'
+									? 'custom'
+									: 'standard';
+						config = config;
+						if (match.seat && isHost) matchState.setConfig(config);
+					}}
+				>
+					{config.opening === 'standard'
+						? 'Standard'
+						: config.opening === 'random'
+							? 'Shuffled'
+							: 'Custom'}
+				</button>
+			</div>
+			<div class="row">
 				<span>Lava</span>
 				<button
 					class="opt"
@@ -166,9 +242,28 @@
 			</div>
 		</div>
 
-		<p class="mv-caption centre mv-gold">
-			{optionFor(COOLDOWN_OPTIONS, config.moveCooldownMs).blurb}
-		</p>
+		{#if config.opening === 'custom'}
+			<textarea
+				class="mv-input position"
+				bind:value={positionText}
+				rows="3"
+				placeholder="Paste a FEN or a PGN"
+				aria-label="Custom starting position"
+			></textarea>
+			<button class="mv-button quiet" on:click={applyPosition}>Use this position</button>
+			{#if positionNote}<p class="mv-caption centre">{positionNote}</p>{/if}
+		{/if}
+
+		{#if config.chessMode === 'shared'}
+			<p class="mv-caption centre mv-gold">
+				{optionFor(COOLDOWN_OPTIONS, config.moveCooldownMs).blurb}
+			</p>
+		{:else}
+			<p class="mv-caption centre">
+				Everyone plays their own game against the engine. The tower is what you share —
+				the cooldown does not apply.
+			</p>
+		{/if}
 
 		<button class="mv-button" on:click={host}>
 			{match.seat ? 'Apply and Return' : 'Create Room'}
@@ -189,6 +284,7 @@
 			{#each match.players as player (player.seat)}
 				<div class="seat" class:you={player.seat === match.seat}>
 					<span class="who">
+						<span class="chip" style:background={colourFor(player.colour).css}></span>
 						{player.displayName}{player.seat === match.seat ? ' (you)' : ''}
 						{#if player.seat === match.hostSeat}<em>host</em>{/if}
 					</span>
@@ -266,6 +362,27 @@
 		text-transform: uppercase;
 		color: var(--crimson);
 		margin-left: 6px;
+	}
+
+	.chip {
+		display: inline-block;
+		width: 10px;
+		height: 10px;
+		border-radius: 50%;
+		border: 1px solid rgba(0, 0, 0, 0.35);
+		margin-right: 6px;
+		vertical-align: middle;
+	}
+
+	.position {
+		resize: vertical;
+		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+		font-size: 12px;
+	}
+
+	.opt:disabled {
+		opacity: 0.45;
+		cursor: not-allowed;
 	}
 
 	.state {

@@ -2,11 +2,14 @@ import { Chess } from 'chess.js';
 import { liftForMove } from '../src/game/lift.ts';
 import {
 	DEFAULT_MATCH_CONFIG,
+	MAX_PLAYERS,
+	SEATS,
 	type GameStart,
 	type MatchConfig,
 	type Seat,
 	type ServerMessage
 } from '../src/game/multiplayer/protocol.ts';
+import { randomBackRankFen } from '../src/game/multiplayer/openings.ts';
 
 /**
  * A match, and every rule that decides one.
@@ -36,6 +39,8 @@ export interface Player {
 	/** Server time this player may next move. */
 	nextMoveAt: number;
 	connected: boolean;
+	/** Index into the climber palette, so every rival is a different colour. */
+	colour: number;
 }
 
 export type Outbound = { to: Seat | 'all'; message: ServerMessage };
@@ -62,7 +67,7 @@ export class Match {
 
 	private chess = new Chess();
 	/** Which colour each seat plays in the current game. */
-	private colours: Record<Seat, 'w' | 'b'> = { a: 'w', b: 'b' };
+	private colours: Record<Seat, 'w' | 'b'> = { a: 'w', b: 'b', c: 'w', d: 'w', e: 'w' };
 
 	constructor(code: string) {
 		this.code = code;
@@ -73,7 +78,12 @@ export class Match {
 	}
 
 	get isFull() {
-		return this.players.size >= 2;
+		return this.players.size >= Math.min(this.config.maxPlayers, MAX_PLAYERS);
+	}
+
+	/** True when the chess is a duel on one board rather than a race of solos. */
+	get isShared() {
+		return this.config.chessMode === 'shared' && this.players.size === 2;
 	}
 
 	player(seat: Seat) {
@@ -87,8 +97,8 @@ export class Match {
 	// ── Lobby ──────────────────────────────────────────────────────────────
 
 	join(displayName: string): Seat | null {
-		const seat: Seat = this.players.has('a') ? 'b' : 'a';
-		if (this.players.has(seat)) return null;
+		const seat = SEATS.slice(0, this.config.maxPlayers).find((s) => !this.players.has(s));
+		if (!seat) return null;
 
 		this.players.set(seat, {
 			seat,
@@ -98,7 +108,8 @@ export class Match {
 			streak: 0,
 			losses: 0,
 			nextMoveAt: 0,
-			connected: true
+			connected: true,
+			colour: SEATS.indexOf(seat)
 		});
 
 		if (this.players.size === 1) this.hostSeat = seat;
@@ -117,7 +128,8 @@ export class Match {
 			players: [...this.players.values()].map((p) => ({
 				seat: p.seat,
 				displayName: p.displayName,
-				ready: p.ready
+				ready: p.ready,
+				colour: p.colour
 			})),
 			config: this.config,
 			hostSeat: this.hostSeat
@@ -143,6 +155,22 @@ export class Match {
 		if (typeof patch.lavaSpeed === 'number') next.lavaSpeed = clamp(patch.lavaSpeed, 0, 60);
 		if (typeof patch.winStreakForInstantWin === 'number')
 			next.winStreakForInstantWin = clamp(Math.round(patch.winStreakForInstantWin), 1, 10);
+		if (typeof patch.maxPlayers === 'number')
+			// Never below the number already seated, or somebody would be evicted
+			// by a setting change.
+			next.maxPlayers = clamp(
+				Math.round(patch.maxPlayers),
+				Math.max(2, this.players.size),
+				MAX_PLAYERS
+			);
+		if (patch.opening) next.opening = patch.opening;
+		if (typeof patch.customFen === 'string') next.customFen = patch.customFen.slice(0, 120);
+		if (patch.chessMode) next.chessMode = patch.chessMode;
+
+		// A duel needs exactly two people. Any larger room races instead, and
+		// saying so here means the lobby cannot present an impossible combination.
+		if (next.chessMode === 'shared' && next.maxPlayers !== 2) next.chessMode = 'solo';
+
 		this.config = next;
 	}
 
@@ -152,7 +180,7 @@ export class Match {
 	}
 
 	get everyoneReady() {
-		return this.players.size === 2 && [...this.players.values()].every((p) => p.ready);
+		return this.players.size >= 2 && [...this.players.values()].every((p) => p.ready);
 	}
 
 	// ── Games ──────────────────────────────────────────────────────────────
@@ -190,20 +218,27 @@ export class Match {
 			.sort((a, b) => b.losses - a.losses)[0];
 
 		if (!trailing) {
-			const fen = this.config.handicap.level;
+			const fen = this.openingFen();
 			const aIsWhite = this.gameIndex % 2 === 0;
-			this.colours = aIsWhite ? { a: 'w', b: 'b' } : { a: 'b', b: 'w' };
+			for (const seat of SEATS) this.colours[seat] = 'w';
+			const [first, second] = [...this.players.keys()];
+			if (first && second) {
+				this.colours[first] = aIsWhite ? 'w' : 'b';
+				this.colours[second] = aIsWhite ? 'b' : 'w';
+			}
 			this.chess.load(fen);
 			return { fen };
 		}
 
 		const steps = this.config.handicap.steps;
 		const rung = Math.min(trailing.losses, steps.length) - 1;
-		const fen = rung >= 0 ? steps[rung] : this.config.handicap.level;
+		const fen = rung >= 0 ? steps[rung] : this.openingFen();
 
 		// Trailing player takes Black, the side the ladder favours.
-		this.colours =
-			trailing.seat === 'a' ? { a: 'b', b: 'w' } : { a: 'w', b: 'b' };
+		this.colours = { ...this.colours, [trailing.seat]: 'b' };
+		for (const seat of this.players.keys()) {
+			if (seat !== trailing.seat) this.colours[seat] = 'w';
+		}
 		this.chess.load(fen);
 
 		const note =
@@ -213,12 +248,35 @@ export class Match {
 		return { fen, note };
 	}
 
+	/**
+	 * The position a level game opens from.
+	 *
+	 * A custom FEN is validated before use: the host typed or pasted it, and a
+	 * position chess.js cannot load would otherwise take the match down at the
+	 * moment it starts.
+	 */
+	private openingFen(): string {
+		if (this.config.opening === 'random') return randomBackRankFen();
+		if (this.config.opening === 'custom' && this.config.customFen) {
+			try {
+				new Chess(this.config.customFen);
+				return this.config.customFen;
+			} catch {
+				return this.config.handicap.level;
+			}
+		}
+		return this.config.handicap.level;
+	}
+
 	private gameStartFor(seat: Seat, game: { fen: string; note?: string }): GameStart {
 		return {
 			t: 'gameStart',
 			gameIndex: this.gameIndex,
 			fen: game.fen,
-			youPlay: this.colours[seat],
+			// In a race each client runs its own game, so nobody is assigned a
+			// colour by the server and every board starts as White.
+			youPlay: this.isShared ? this.colours[seat] : 'w',
+			shared: this.isShared,
 			handicapNote: game.note
 		};
 	}
@@ -248,6 +306,9 @@ export class Match {
 	move(seat: Seat, lan: string, gameIndex: number, now: number): Outbound[] {
 		const player = this.players.get(seat);
 		if (!player || this.ended || !this.started) return [];
+		// In a race the chess is local to each client and none of the server's
+		// business; only heights are shared.
+		if (!this.isShared) return [];
 
 		if (gameIndex !== this.gameIndex) {
 			return [
@@ -484,17 +545,15 @@ export class Match {
 	}
 
 	private heights(): Record<Seat, number> {
-		return {
-			a: this.players.get('a')?.height ?? 0,
-			b: this.players.get('b')?.height ?? 0
-		};
+		const out = {} as Record<Seat, number>;
+		for (const seat of SEATS) out[seat] = this.players.get(seat)?.height ?? 0;
+		return out;
 	}
 
 	private streaks(): Record<Seat, number> {
-		return {
-			a: this.players.get('a')?.streak ?? 0,
-			b: this.players.get('b')?.streak ?? 0
-		};
+		const out = {} as Record<Seat, number>;
+		for (const seat of SEATS) out[seat] = this.players.get(seat)?.streak ?? 0;
+		return out;
 	}
 }
 

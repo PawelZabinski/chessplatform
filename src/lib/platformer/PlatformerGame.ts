@@ -35,6 +35,7 @@ import {
 	PLAYER_HEIGHT,
 	RUN_SPEED
 } from './world/Player';
+import type { RivalClimber } from './render/renderer';
 import { BAND_HEIGHT, overlaps } from './world/types';
 import { GROUND_INSET, World } from './world/World';
 
@@ -112,6 +113,8 @@ export interface GameCallbacks {
 	restorePiece(): void;
 	clearSpikesRequested(): void;
 	setBoardSlowMotion(active: boolean): void;
+	/** Tell the match server how high we are. Absent outside a race. */
+	reportHeight?(bands: number): void;
 }
 
 /**
@@ -150,6 +153,18 @@ export class PlatformerGame {
 	private summit = 0;
 	/** Highest star mark already announced, so each is celebrated once. */
 	private starsShown = 0;
+
+	/**
+	 * Rivals in a race, keyed by seat.
+	 *
+	 * Their heights arrive a few times a second, so the drawn position is eased
+	 * towards the reported one rather than snapped to it — at five updates a
+	 * second a snap reads as teleporting, and the race is about relative
+	 * position, which smoothing preserves exactly.
+	 */
+	private rivals = new Map<string, RivalClimber & { targetY: number }>();
+	/** How often to tell the server where we are, in simulated milliseconds. */
+	private lastHeightReport = 0;
 
 	private controlUntil = 0;
 	private slowCharge = 0;
@@ -286,6 +301,7 @@ export class PlatformerGame {
 		}
 
 		this.updateSlowMotion();
+		this.updateRivals(step);
 		this.updateCamera();
 		this.input.endStep();
 		this.publishHud();
@@ -517,6 +533,44 @@ export class PlatformerGame {
 		this.toast('Slow motion', 'cool');
 	}
 
+	/**
+	 * Sets, or updates, where a rival is.
+	 *
+	 * Called from outside with a height in bands; the conversion to world space
+	 * happens here because bands are the only unit the network layer knows.
+	 */
+	setRival(seat: string, name: string, hue: number, css: string, bands: number, lane: number) {
+		const y = this.surface.height - bands * BAND_HEIGHT;
+		const existing = this.rivals.get(seat);
+		// Lanes fan rivals out horizontally so five climbers at the same height do
+		// not stack into one indistinguishable blob.
+		const x = this.surface.width * (0.16 + 0.17 * (lane % 5));
+
+		if (existing) {
+			existing.targetY = y;
+			existing.name = name;
+			existing.x = x;
+		} else {
+			this.rivals.set(seat, { name, hue, css, x, y, targetY: y });
+		}
+	}
+
+	removeRival(seat: string) {
+		this.rivals.delete(seat);
+	}
+
+	private updateRivals(step: number) {
+		for (const rival of this.rivals.values()) {
+			// Ease towards the last reported height; see the field comment.
+			rival.y += (rival.targetY - rival.y) * Math.min(1, step * 6);
+		}
+
+		if (this.loop.simTime - this.lastHeightReport >= 200) {
+			this.lastHeightReport = this.loop.simTime;
+			this.callbacks.reportHeight?.(this.maxBand);
+		}
+	}
+
 	private updateCamera() {
 		// Follows vertically only, easing so a big launch does not snap the view.
 		const target = this.player.y - this.surface.height * CAMERA_ANCHOR;
@@ -740,6 +794,7 @@ export class PlatformerGame {
 			this.lava,
 			this.sprites,
 			{
+				rivals: this.rivals.size ? [...this.rivals.values()] : undefined,
 				cameraY: this.cameraY,
 				theme: this.theme,
 				altitude: Math.min(1, this.maxBand / 45),

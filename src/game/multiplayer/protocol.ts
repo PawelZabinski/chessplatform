@@ -90,8 +90,35 @@
  * Client→server messages are intents; server→client messages are facts.
  */
 
-/** Player slot within a match. */
-export type Seat = 'a' | 'b';
+/** Player slot within a match. Five is the practical ceiling for the tower. */
+export const SEATS = ['a', 'b', 'c', 'd', 'e'] as const;
+export type Seat = (typeof SEATS)[number];
+export const MAX_PLAYERS = SEATS.length;
+
+/**
+ * How the chess is played in a match.
+ *
+ * 'shared' is the real-time duel: one board, both players moving on it, gated
+ * by a per-player cooldown rather than by turns. It only makes sense for
+ * exactly two people, so it is offered only then.
+ *
+ * 'solo' is the racing format and the only one that works for three or more:
+ * everybody plays their own game against the engine, exactly as in single
+ * player, and what is shared is the tower. Two players may choose it too — it
+ * is a race rather than a fight.
+ */
+export type ChessMode = 'shared' | 'solo';
+
+/**
+ * Where each game begins.
+ *
+ * 'standard' is the normal array. 'random' shuffles the back rank Chess960
+ * style, which keeps opening knowledge out of a format that is meant to be
+ * about speed. 'custom' takes a position the host supplies — FEN for a single
+ * position, PGN for a game to resume from, those being the two formats anyone
+ * exchanging chess positions already has to hand.
+ */
+export type OpeningMode = 'standard' | 'random' | 'custom';
 
 /**
  * How far behind the loser is allowed to fall before the next game is skewed in
@@ -130,9 +157,20 @@ export interface MatchConfig {
 	 * Player-local slow-motion is ignored in multiplayer — see the note above.
 	 */
 	gameSpeed: number;
-	/** Lava rise rate, shared by both climbers so the pressure is symmetric. */
+	/** Lava rise rate, shared by every climber so the pressure is symmetric. */
 	lavaSpeed: number;
 	handicap: HandicapLadder;
+	/** Duel on one board, or everyone against the engine. See ChessMode. */
+	chessMode: ChessMode;
+	/** How many players the room will admit, 2–5. */
+	maxPlayers: number;
+	opening: OpeningMode;
+	/**
+	 * Position for `opening: 'custom'`, as FEN. A PGN pasted into the lobby is
+	 * played out client-side and reduced to the FEN of its final position, so
+	 * only ever one representation travels.
+	 */
+	customFen?: string;
 }
 
 // ── Client → server ─────────────────────────────────────────────────────────
@@ -188,7 +226,7 @@ export interface LobbyState {
 	t: 'lobby';
 	lobbyCode: string;
 	seat: Seat;
-	players: { seat: Seat; displayName: string; ready: boolean }[];
+	players: { seat: Seat; displayName: string; ready: boolean; colour: number }[];
 	config: MatchConfig;
 	hostSeat: Seat;
 }
@@ -205,6 +243,8 @@ export interface GameStart {
 	fen: string;
 	/** Which colour this client plays in this game. */
 	youPlay: 'w' | 'b';
+	/** Absent in 'solo', where each client runs its own game against the engine. */
+	shared?: boolean;
 	/** Why this position was chosen, for the on-screen banner. */
 	handicapNote?: string;
 }
@@ -288,6 +328,9 @@ export const DEFAULT_MATCH_CONFIG: MatchConfig = {
 	moveCooldownMs: 1000,
 	gameSpeed: 1,
 	lavaSpeed: 12,
+	chessMode: 'solo',
+	maxPlayers: 2,
+	opening: 'standard',
 	handicap: {
 		level: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
 		// Placeholder ladder: a pawn, then the exchange, then a piece.

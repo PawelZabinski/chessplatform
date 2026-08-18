@@ -16,6 +16,19 @@ export interface RenderState {
 	/** 0..1 lava proximity, drives the warning glow. */
 	danger: number;
 	slowMotion: boolean;
+	/** Rival climbers in a race, drawn as coloured ghosts. */
+	rivals?: RivalClimber[];
+}
+
+/** Another player's climber, as last reported. */
+export interface RivalClimber {
+	name: string;
+	/** Hue rotation applied to the sprite, from the shared palette. */
+	hue: number;
+	css: string;
+	/** World position, already smoothed by the caller. */
+	x: number;
+	y: number;
 }
 
 /**
@@ -49,6 +62,10 @@ export function renderWorld(
 
 	drawPlatforms(ctx, world, height, toScreenY);
 	drawHazards(ctx, world, height, state.simTime, toScreenY, sprites);
+
+	// Rivals go behind the local climber, so your own frog is never hidden by
+	// somebody passing through you.
+	if (state.rivals?.length) drawRivals(ctx, state.rivals, width, height, toScreenY, sprites, state);
 
 	// The climber, interpolated between fixed steps so motion stays smooth.
 	const px = player.prevX + (player.x - player.prevX) * alpha;
@@ -229,6 +246,64 @@ function drawHazards(
 		const y = toScreenY(rune.baseY + bob);
 		if (y < -rune.size || y > height + rune.size) continue;
 		drawRune(ctx, rune.x, y, rune.size, 0.5 + Math.sin(simTime / 300 + rune.phase) * 0.5);
+	}
+}
+
+/**
+ * Other players' climbers.
+ *
+ * Each is the same sprite under a hue rotation, at reduced opacity so it reads
+ * as somebody else's climber rather than a second one of yours. A rival who has
+ * climbed off the top of the view is pinned to the edge with an arrow instead of
+ * being dropped — knowing how far ahead somebody is *is* the race, and a rival
+ * you cannot see is exactly the one you most want to know about.
+ */
+function drawRivals(
+	ctx: CanvasRenderingContext2D,
+	rivals: RivalClimber[],
+	width: number,
+	height: number,
+	toScreenY: (y: number) => number,
+	sprites: NinjaSprites,
+	state: RenderState
+) {
+	for (const rival of rivals) {
+		const screenY = toScreenY(rival.y);
+		const offTop = screenY < 8;
+		const offBottom = screenY > height - 8;
+
+		ctx.save();
+		ctx.globalAlpha = 0.72;
+
+		if (offTop || offBottom) {
+			// Edge marker: a chevron and a name, at the rival's horizontal position.
+			const y = offTop ? 14 : height - 14;
+			const x = Math.max(20, Math.min(width - 20, rival.x));
+			ctx.fillStyle = rival.css;
+			ctx.beginPath();
+			ctx.moveTo(x, offTop ? y - 8 : y + 8);
+			ctx.lineTo(x - 7, offTop ? y + 4 : y - 4);
+			ctx.lineTo(x + 7, offTop ? y + 4 : y - 4);
+			ctx.closePath();
+			ctx.fill();
+
+			ctx.font = '10px system-ui, sans-serif';
+			ctx.textAlign = 'center';
+			ctx.fillText(rival.name, x, offTop ? y + 16 : y - 10);
+		} else {
+			// The sprite sheet is a single green frog; rotating its hue is what
+			// makes five distinguishable climbers out of one piece of art.
+			if (rival.hue) ctx.filter = `hue-rotate(${rival.hue}deg)`;
+			sprites.draw(ctx, 'idle', state.simTime, rival.x, screenY, 34, 44, 1);
+			ctx.filter = 'none';
+
+			ctx.font = '10px system-ui, sans-serif';
+			ctx.textAlign = 'center';
+			ctx.fillStyle = rival.css;
+			ctx.fillText(rival.name, rival.x + 17, screenY - 6);
+		}
+
+		ctx.restore();
 	}
 }
 

@@ -108,7 +108,7 @@ check('cooldown clamped >= 0', cfg.config.moveCooldownMs, 0);
 check('gameSpeed clamped <= 1', cfg.config.gameSpeed, 1);
 
 // Set a real cooldown for the timing test.
-a.send({ t: 'config', config: { moveCooldownMs: 400 } });
+a.send({ t: 'config', config: { moveCooldownMs: 400, chessMode: 'shared' } });
 await a.next((m) => m.t === 'lobby' && m.config.moveCooldownMs === 400);
 
 // 6. Both ready -> match starts.
@@ -174,7 +174,7 @@ e.send({ t: 'join', displayName: 'Eve' });
 const lobbyE = await e.next((m) => m.t === 'lobby');
 f.send({ t: 'join', displayName: 'Frank', lobbyCode: lobbyE.lobbyCode });
 await f.next((m) => m.t === 'lobby');
-e.send({ t: 'config', config: { moveCooldownMs: 0 } });
+e.send({ t: 'config', config: { moveCooldownMs: 0, chessMode: 'shared' } });
 await e.next((m) => m.t === 'lobby' && m.config.moveCooldownMs === 0);
 e.send({ t: 'ready', ready: true });
 f.send({ t: 'ready', ready: true });
@@ -218,6 +218,59 @@ check('survivor wins', matchEnd.winner, 'a');
 a.ws.close();
 b.ws.close();
 e.ws.close();
+
+// 14. A room of five seats everyone, and a duel is refused at that size.
+const room5 = [];
+const host5 = client('H0');
+await host5.open();
+host5.send({ t: 'join', displayName: 'Host5' });
+const l5 = await host5.next((m) => m.t === 'lobby');
+host5.send({ t: 'config', config: { maxPlayers: 5, chessMode: 'shared', opening: 'random' } });
+const cfg5 = await host5.next((m) => m.t === 'lobby' && m.config.maxPlayers === 5);
+check('room admits five', cfg5.config.maxPlayers, 5);
+check('duel refused above two', cfg5.config.chessMode, 'solo');
+check('shuffled opening kept', cfg5.config.opening, 'random');
+check('host has a colour', cfg5.players[0].colour, 0);
+
+for (let i = 1; i < 5; i++) {
+	const p = client('P' + i);
+	await p.open();
+	p.send({ t: 'join', displayName: 'P' + i, lobbyCode: l5.lobbyCode });
+	await p.next((m) => m.t === 'lobby' && m.players.length === i + 1);
+	room5.push(p);
+}
+const fullLobby = await host5.next((m) => m.t === 'lobby' && m.players.length === 5);
+check('five seated', fullLobby.players.length, 5);
+check('every seat a distinct colour', new Set(fullLobby.players.map((p) => p.colour)).size, 5);
+
+const sixth = client('X6');
+await sixth.open();
+sixth.send({ t: 'join', displayName: 'Six', lobbyCode: l5.lobbyCode });
+check('sixth refused', (await sixth.next((m) => m.t === 'error')).code, 'lobbyFull');
+sixth.ws.close();
+
+// 15. A race starts with everyone on their own board.
+host5.send({ t: 'ready', ready: true });
+for (const p of room5) p.send({ t: 'ready', ready: true });
+const start5 = await host5.next((m) => m.t === 'start');
+check('race starts with five', start5.firstGame.shared, false);
+check('race deals white to everyone', start5.firstGame.youPlay, 'w');
+check('shuffled position is not the standard array', start5.firstGame.fen.startsWith('rnbqkbnr'), false);
+
+// 16. Heights from every seat reach everyone, and the race is winnable by height.
+room5[0].send({ t: 'height', bands: 5, gameIndex: 0 });
+const h = await host5.next((m) => m.t === 'heights' && m.heights.b > 0);
+check('rival height broadcast', h.heights.b, 5);
+
+// 17. Moves are ignored in a race: the chess is local.
+room5[0].send({ t: 'move', lan: 'e2e4', gameIndex: 0, expectedFen: start5.firstGame.fen });
+let sawMove = false;
+await wait(250);
+sawMove = host5.inbox.some((m) => m.t === 'moveApplied');
+check('race ignores move intents', sawMove, false);
+
+host5.ws.close();
+for (const p of room5) p.ws.close();
 
 clearTimeout(guard);
 const failures = Object.entries(results).filter(([, v]) => v.startsWith('FAIL'));
