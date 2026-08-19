@@ -28,5 +28,8 @@ export const CLIMBER_COLOURS: ClimberColour[] = [
 ];
 
 export function colourFor(index: number): ClimberColour {
-	return CLIMBER_COLOURS[index % CLIMBER_COLOURS.length];
+	// Never undefined: a bad index is a caller's bug, but it must not take the
+	// renderer down with it mid-frame.
+	const safe = Number.isFinite(index) ? Math.abs(Math.trunc(index)) : 0;
+	return CLIMBER_COLOURS[safe % CLIMBER_COLOURS.length];
 }

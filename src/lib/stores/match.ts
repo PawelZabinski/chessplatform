@@ -1,10 +1,11 @@
 import { writable, get } from 'svelte/store';
 import { matchClient, type MatchClientStatus } from '$game/multiplayer/MatchClient';
-import type {
-	GameStart,
-	MatchConfig,
-	Seat,
-	ServerMessage
+import {
+	SEATS,
+	type GameStart,
+	type MatchConfig,
+	type Seat,
+	type ServerMessage
 } from '$game/multiplayer/protocol';
 import { log } from '$lib/diagnostics';
 
@@ -25,6 +26,14 @@ export interface MatchPlayer {
 	seat: Seat;
 	displayName: string;
 	ready: boolean;
+	/**
+	 * Palette index assigned by the server.
+	 *
+	 * This was missing while the protocol already carried it, so every reader saw
+	 * undefined: colourFor(undefined) indexed past the end of the palette and the
+	 * rival blew up on `.hue`. Nothing to do with running two windows.
+	 */
+	colour: number;
 }
 
 export interface MatchState {
@@ -47,12 +56,25 @@ export interface MatchState {
 	error?: string;
 }
 
+/**
+ * Every seat present and zeroed.
+ *
+ * Not `{ a: 0, b: 0 }`: a room of five reports heights for seats c–e, and a
+ * lookup that returned undefined for them turned into NaN one multiplication
+ * later, which is an unrenderable climber rather than a visible bug.
+ */
+function zeroed(): Record<Seat, number> {
+	const out = {} as Record<Seat, number>;
+	for (const seat of SEATS) out[seat] = 0;
+	return out;
+}
+
 const EMPTY: MatchState = {
 	status: 'idle',
 	players: [],
 	started: false,
-	heights: { a: 0, b: 0 },
-	streaks: { a: 0, b: 0 }
+	heights: zeroed(),
+	streaks: zeroed()
 };
 
 const state = writable<MatchState>({ ...EMPTY });
@@ -106,7 +128,7 @@ function reduce(s: MatchState, message: ServerMessage): MatchState {
 			return { ...s, streaks: message.streaks };
 
 		case 'heights':
-			return { ...s, heights: message.heights };
+			return { ...s, heights: { ...zeroed(), ...message.heights } };
 
 		case 'matchEnded':
 			log.info('net', 'Match ended', { winner: message.winner, reason: message.reason });

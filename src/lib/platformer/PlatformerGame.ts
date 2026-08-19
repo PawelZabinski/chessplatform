@@ -171,6 +171,8 @@ export class PlatformerGame {
 	private rivals = new Map<string, RivalClimber & { targetY: number }>();
 	/** How often to tell the server where we are, in simulated milliseconds. */
 	private lastHeightReport = 0;
+	/** Hue for our own climber in a race; 0 leaves the sprite's own green. */
+	private playerHue = 0;
 
 	private controlUntil = 0;
 	private slowCharge = 0;
@@ -554,7 +556,10 @@ export class PlatformerGame {
 	 * happens here because bands are the only unit the network layer knows.
 	 */
 	setRival(seat: string, name: string, hue: number, css: string, bands: number, lane: number) {
-		const y = this.surface.height - bands * BAND_HEIGHT;
+		// A height that is not a number would propagate through the eased position
+		// as NaN and silently stop the climber drawing at all.
+		const safeBands = Number.isFinite(bands) ? bands : 0;
+		const y = this.surface.height - safeBands * BAND_HEIGHT;
 		const existing = this.rivals.get(seat);
 		// Lanes fan rivals out horizontally so five climbers at the same height do
 		// not stack into one indistinguishable blob.
@@ -567,6 +572,11 @@ export class PlatformerGame {
 		} else {
 			this.rivals.set(seat, { name, hue, css, x, y, targetY: y });
 		}
+	}
+
+	/** Sets our own climber's colour, matching the seat the server gave us. */
+	setPlayerColour(hue: number) {
+		this.playerHue = hue;
 	}
 
 	removeRival(seat: string) {
@@ -838,6 +848,7 @@ export class PlatformerGame {
 			this.lava,
 			this.sprites,
 			{
+				playerHue: this.playerHue,
 				rivals: this.rivals.size ? [...this.rivals.values()] : undefined,
 				cameraY: this.cameraY,
 				theme: this.theme,

@@ -18,6 +18,8 @@ export interface RenderState {
 	slowMotion: boolean;
 	/** Rival climbers in a race, drawn as coloured ghosts. */
 	rivals?: RivalClimber[];
+	/** Hue rotation for the local climber, so you are your colour as well. */
+	playerHue?: number;
 }
 
 /** Another player's climber, as last reported. */
@@ -70,6 +72,10 @@ export function renderWorld(
 	// The climber, interpolated between fixed steps so motion stays smooth.
 	const px = player.prevX + (player.x - player.prevX) * alpha;
 	const py = player.prevY + (player.y - player.prevY) * alpha;
+	if (state.playerHue) {
+		ctx.save();
+		ctx.filter = `hue-rotate(${state.playerHue}deg)`;
+	}
 	sprites.draw(
 		ctx,
 		player.anim,
@@ -80,6 +86,7 @@ export function renderWorld(
 		player.height,
 		player.facing
 	);
+	if (state.playerHue) ctx.restore();
 
 	drawLava(ctx, width, height, lava, toScreenY, state.simTime, alpha);
 	if (state.danger > 0) drawDangerVignette(ctx, width, height, state.danger);

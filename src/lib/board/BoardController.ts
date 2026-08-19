@@ -128,6 +128,8 @@ export class BoardController {
 	 * other rule of chess still applies.
 	 */
 	private realTimeColour: 'w' | 'b' | null = null;
+	/** Which side is drawn nearest the player. */
+	private orientation: 'w' | 'b' = 'w';
 	/** While true the local player may not move: their cooldown is running. */
 	private cooling = false;
 
@@ -212,7 +214,22 @@ export class BoardController {
 	/** Switches the board into turn-free play as `colour`. */
 	setRealTime(colour: 'w' | 'b' | null) {
 		this.realTimeColour = colour;
+		if (colour) this.setOrientation(colour);
 		this.syncGround();
+	}
+
+	/**
+	 * Turns the board so the side you play is nearest you.
+	 *
+	 * Playing Black up a board drawn from White's side means every one of your
+	 * moves is a drag towards yourself and every threat arrives from behind —
+	 * which is why no chess interface does it. The loss animation reads the same
+	 * flag, so a piece taken by a spike still animates off the square it was
+	 * actually standing on.
+	 */
+	setOrientation(colour: 'w' | 'b') {
+		this.orientation = colour;
+		this.ground.set({ orientation: colour === 'w' ? 'white' : 'black' });
 	}
 
 	/** Locks the board for the duration of a move cooldown. */
@@ -633,9 +650,11 @@ export class BoardController {
 		const rank = Number(square.charAt(1));
 		if (!Number.isFinite(rank) || file < 0 || file > 7) return;
 
-		// The board is always drawn from White's side, so a1 is bottom-left.
-		const left = file * 12.5;
-		const top = (8 - rank) * 12.5;
+		// Flipped for Black, so the ghost leaves the square the piece was on
+		// rather than its mirror image.
+		const flip = this.orientation === 'b';
+		const left = (flip ? 7 - file : file) * 12.5;
+		const top = (flip ? rank - 1 : 8 - rank) * 12.5;
 
 		const ghost = document.createElement('piece');
 		ghost.className = `${piece.color === 'w' ? 'white' : 'black'} ${PIECE_CLASS[piece.type]} cp-lost`;

@@ -86,9 +86,12 @@
 		const seat = state.seat;
 		const shared = state.game.shared === true;
 
-		if (shared && seat) {
-			board?.setRealTime(state.game.youPlay);
-		}
+		if (shared && seat) board?.setRealTime(state.game.youPlay);
+
+		// Our own frog wears our seat's colour, so "everyone is a different
+		// colour" is true of the climber you are actually looking at as well.
+		const me = state.players.find((p) => p.seat === seat);
+		if (me) game?.setPlayerColour(colourFor(me.colour).hue);
 
 		// Everyone already in the room, drawn from the first frame rather than
 		// waiting for their first height report.
@@ -108,8 +111,11 @@
 						board?.resync(message.fen);
 						startCooldown();
 					} else {
-						const theirs = state.game?.youPlay === 'w' ? 'b' : 'w';
-						board?.applyRemote(message.lan, theirs);
+						// Read live, not from the capture above: a re-deal swaps
+						// colours, and a stale copy would apply the opponent's move as
+						// our own side.
+						const mine = matchState.current.game?.youPlay ?? 'w';
+						board?.applyRemote(message.lan, mine === 'w' ? 'b' : 'w');
 					}
 					break;
 				}
