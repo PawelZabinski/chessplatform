@@ -15,6 +15,7 @@ export interface ThemeTextures {
 	wood: HTMLCanvasElement;
 	stone: HTMLCanvasElement;
 	ground: HTMLCanvasElement;
+	groundCap: HTMLCanvasElement;
 	wall: HTMLCanvasElement;
 	sky: CanvasGradient | null;
 	skyStops: [string, string, string, string];
@@ -89,19 +90,40 @@ function stoneSlab(theme: TerrainTheme) {
 	});
 }
 
+/**
+ * The body of the ground: masonry that repeats in both directions.
+ *
+ * Two things here are load-bearing for a seamless tile, and both were wrong
+ * before:
+ *
+ *  - The joint loop stops *below* the tile width. Drawing one at x === 64 as
+ *    well as x === 0 put a joint on both edges, so every horizontal repeat laid
+ *    two of them on the same pixel column and the seam showed up as a hard dark
+ *    line every tile.
+ *  - The moss lives in its own cap texture. It used to be painted at y === 0 of
+ *    this tile, which is fine for the top of the ground and wrong everywhere
+ *    else: the ground is taller than one tile, so a strip of grass reappeared
+ *    partway down, buried in the brickwork.
+ *
+ * The height stays an exact multiple of the course height so the running bond
+ * carries across a vertical repeat.
+ */
 function groundBricks(theme: TerrainTheme) {
-	return make(64, 112, (ctx) => {
-		const { courseA, courseB, joint, moss } = theme.ground;
-		const brickH = 8;
+	const brickH = 8;
+	const rows = 14; // 14 * 8 = 112, and even, so the bond alternates cleanly.
+	return make(64, brickH * rows, (ctx) => {
+		const { courseA, courseB, joint } = theme.ground;
 		ctx.strokeStyle = joint;
 		ctx.lineWidth = 1;
 
-		for (let row = 0; row * brickH < 112; row++) {
+		for (let row = 0; row < rows; row++) {
 			const y = row * brickH;
 			const offset = row % 2 === 0 ? 0 : 16;
 			ctx.fillStyle = row % 2 === 0 ? courseA : courseB;
 			ctx.fillRect(0, y, 64, brickH - 1);
-			for (let x = offset; x <= 64; x += 32) {
+			// `x < 64`, never `<= 64`: the joint on the right edge belongs to the
+			// next tile along, not to this one as well.
+			for (let x = offset; x < 64; x += 32) {
 				ctx.beginPath();
 				ctx.moveTo(x + 0.5, y);
 				ctx.lineTo(x + 0.5, y + brickH - 1);
@@ -110,8 +132,13 @@ function groundBricks(theme: TerrainTheme) {
 			ctx.fillStyle = 'rgba(0,0,0,0.35)';
 			ctx.fillRect(0, y + brickH - 1, 64, 1);
 		}
+	});
+}
 
-		ctx.fillStyle = moss;
+/** The mossy lip along the very top of the ground. Drawn once, never tiled down. */
+function groundCap(theme: TerrainTheme) {
+	return make(64, 3, (ctx) => {
+		ctx.fillStyle = theme.ground.moss;
 		for (let x = 0; x < 64; x += 4) {
 			if ((x / 4) % 3 !== 0) ctx.fillRect(x, 0, 3, 2);
 		}
@@ -195,6 +222,7 @@ export function texturesFor(theme: TerrainTheme): ThemeTextures {
 		wood: woodPlank(theme),
 		stone: stoneSlab(theme),
 		ground: groundBricks(theme),
+		groundCap: groundCap(theme),
 		wall: towerWall(theme),
 		sky: null,
 		skyStops: theme.sky

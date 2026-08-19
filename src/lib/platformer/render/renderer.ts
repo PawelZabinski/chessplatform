@@ -115,15 +115,27 @@ function drawGround(
 ) {
 	if (groundScreenY >= height) return;
 
-	const tex = texturesFor(world.ground.theme).ground;
+	const textures = texturesFor(world.ground.theme);
+	const tex = textures.ground;
 	const tileW = tex.width * 2;
 	const tileH = tex.height * 2;
+	// Integer destinations only. The camera eases in fractions of a pixel, and
+	// with smoothing disabled a fractional drawImage drops or doubles a column,
+	// which is what made the brickwork crawl and shimmer as the view moved.
 	const top = Math.round(groundScreenY);
 
 	for (let y = top; y < height; y += tileH) {
 		for (let x = 0; x < width; x += tileW) {
 			ctx.drawImage(tex, Math.round(x), y, tileW, tileH);
 		}
+	}
+
+	// The mossy lip belongs to the top edge alone, so it is drawn after the body
+	// rather than baked into a tile that repeats downward.
+	const cap = textures.groundCap;
+	const capH = cap.height * 2;
+	for (let x = 0; x < width; x += tileW) {
+		ctx.drawImage(cap, Math.round(x), top, tileW, capH);
 	}
 }
 

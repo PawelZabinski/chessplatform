@@ -17,6 +17,14 @@
 		restorePiece(colour?: 'w' | 'b'): void;
 		setSlowMotion(active: boolean): void;
 		reset(): void;
+		/** Real-time duel: play as `colour`, with no local engine. */
+		setRealTime(colour: 'w' | 'b' | null): void;
+		/** Apply an opponent's move that the server has already validated. */
+		applyRemote(lan: string, colour: 'w' | 'b'): void;
+		/** Snap to the server's authoritative position. */
+		resync(fen: string): void;
+		/** Lock the board while this player's move cooldown runs. */
+		setCooling(cooling: boolean): void;
 	}
 
 	export type { Move, DrawRisk, GameOverDetail };
@@ -42,6 +50,11 @@
 	export let onDrawRisk: (risk: DrawRisk) => void = () => {};
 	export let onEnPassant: () => void = () => {};
 	export let handle: BoardHandle | null = null;
+	/**
+	 * Fires instead of the local engine when the board is in a real-time duel:
+	 * the move is an intent for the server, not a fact, until it comes back.
+	 */
+	export let onIntent: ((lan: string, fen: string) => void) | null = null;
 
 	type EngineConfig = {
 		randomMoveProbability?: number;
@@ -62,6 +75,7 @@
 	 * position instead of its own.
 	 */
 	let positionDealt = false;
+	let realTimeColour: 'w' | 'b' | null = null;
 
 	const engine = new Engine();
 
@@ -79,6 +93,10 @@
 				chessState.addMove(move);
 				if (move.flags.includes('e')) onEnPassant();
 				onMove(move);
+				// In a duel our own move is only provisional; the server decides.
+				if (onIntent && move.color === realTimeColour) {
+					onIntent(`${move.from}${move.to}${move.promotion ?? ''}`, controller?.fen ?? '');
+				}
 			},
 			onPositionChange: (fen) => chessState.setFen(fen),
 			onGameOver: (detail) => onGameOver(detail),
@@ -108,6 +126,15 @@
 				chessState.restoreFallenPiece(colour, (fen) => controller?.setFenSilently(fen));
 			},
 			setSlowMotion: (active) => controller?.setSlowMotion(active),
+			setRealTime: (colour) => {
+				realTimeColour = colour;
+				// A duel has no local engine at all: the opponent is a person.
+				controller?.setOpponent(colour ? undefined : engineOpponent);
+				controller?.setRealTime(colour);
+			},
+			applyRemote: (lan, colour) => controller?.applyRemoteMove(lan, colour),
+			resync: (fen) => controller?.resync(fen),
+			setCooling: (cooling) => controller?.setCooling(cooling),
 			reset: () => {
 				chessState.clearHistory();
 				controller?.reset();

@@ -13,8 +13,12 @@
 	} from '$lib/platformer/PlatformerGame';
 	import type { BoardHandle } from '$lib/ChessBoard.svelte';
 	import { chessState } from '$lib/stores/chess';
+	import { matchState, onMatchEvent } from '$lib/stores/match';
+	import { colourFor } from '$game/multiplayer/palette';
+	import { goto } from '$lib/stores/app';
+	import { log } from '$lib/diagnostics';
 
-	export let mode: 'tower' | 'endless';
+	export let mode: 'tower' | 'endless' | 'match';
 	export let floor: number | undefined = undefined;
 	export let onEnd: (outcome: RunOutcome) => void;
 
@@ -26,6 +30,8 @@
 	let banner: Banner | null = null;
 	let toasts: Toast[] = [];
 	let touch = false;
+	let stopMatch: (() => void) | null = null;
+	let cooldownTimer: ReturnType<typeof setTimeout> | undefined;
 
 	/**
 	 * The two halves talk only through this object.
@@ -49,20 +55,155 @@
 			removePiece: () => board?.removePiece(),
 			restorePiece: () => board?.restorePiece(),
 			clearSpikesRequested: () => {},
-			setBoardSlowMotion: (active: boolean) => board?.setSlowMotion(active)
+			setBoardSlowMotion: (active: boolean) => board?.setSlowMotion(active),
+			// Only a match cares where we are; single player has nobody to tell.
+			reportHeight:
+				mode === 'match' ? (bands: number) => matchState.reportHeight(bands, 0) : undefined
 		};
+	}
+
+	/**
+	 * Connects the running climb to the match.
+	 *
+	 * This is the piece that makes multiplayer actually multiplayer: without it
+	 * the lobby seats everyone correctly, the server runs the match correctly,
+	 * and each player then plays an ordinary single-player game in isolation —
+	 * which is exactly what it looked like.
+	 *
+	 * Two quite different jobs, depending on the format. In a race everybody
+	 * plays the engine and all that is shared is height, so the only wiring is
+	 * rivals in and heights out. In a duel the board itself is shared: the local
+	 * engine is removed entirely, our moves become intents, and the server's
+	 * MoveApplied is what actually moves the pieces.
+	 */
+	function connectMatch() {
+		const state = matchState.current;
+		if (!state.game) {
+			log.warn('net', 'Match screen opened with no game dealt');
+			return () => {};
+		}
+
+		const seat = state.seat;
+		const shared = state.game.shared === true;
+
+		if (shared && seat) {
+			board?.setRealTime(state.game.youPlay);
+		}
+
+		// Everyone already in the room, drawn from the first frame rather than
+		// waiting for their first height report.
+		syncRivals();
+
+		const off = onMatchEvent((message) => {
+			switch (message.t) {
+				case 'heights':
+					syncRivals();
+					break;
+
+				case 'moveApplied': {
+					if (!shared) break;
+					if (message.by === seat) {
+						// Our own move: already on the board optimistically. Trust the
+						// server's position over ours and start the cooldown.
+						board?.resync(message.fen);
+						startCooldown();
+					} else {
+						const theirs = state.game?.youPlay === 'w' ? 'b' : 'w';
+						board?.applyRemote(message.lan, theirs);
+					}
+					break;
+				}
+
+				case 'error':
+					// A rejected move leaves our optimistic board ahead of the server's.
+					if (message.code === 'badMove' && message.fen) board?.resync(message.fen);
+					if (message.code === 'cooldown') startCooldown(message.retryInMs);
+					break;
+
+				case 'gameStart':
+					board?.loadPosition({ fen: message.fen });
+					if (shared) board?.setRealTime(message.youPlay);
+					game?.matchGameDealt();
+					break;
+
+				case 'matchEnded':
+					game?.matchOver(
+						message.winner === seat
+							? 'You reached the crown first.'
+							: message.winner
+								? 'A rival reached the crown first.'
+								: 'The match ended.',
+						message.winner === seat ? 1 : 0
+					);
+					break;
+			}
+		});
+
+		return () => {
+			off();
+			clearTimeout(cooldownTimer);
+		};
+	}
+
+	/** Mirrors every other player's reported height into the climb. */
+	function syncRivals() {
+		const state = matchState.current;
+		if (!game) return;
+		for (const player of state.players) {
+			if (player.seat === state.seat) continue;
+			const palette = colourFor(player.colour);
+			game.setRival(
+				player.seat,
+				player.displayName,
+				palette.hue,
+				palette.css,
+				state.heights[player.seat] ?? 0,
+				player.colour
+			);
+		}
+	}
+
+	/**
+	 * Locks the board for the cooldown.
+	 *
+	 * Driven locally for responsiveness but never trusted: the server rejects an
+	 * early move regardless, and its `retryInMs` re-arms this timer so the two
+	 * cannot drift apart.
+	 */
+	function startCooldown(ms?: number) {
+		const wait = ms ?? matchState.current.config?.moveCooldownMs ?? 0;
+		clearTimeout(cooldownTimer);
+		if (wait <= 0) return;
+		board?.setCooling(true);
+		cooldownTimer = setTimeout(() => board?.setCooling(false), wait);
+	}
+
+	function sendIntent(lan: string, fen: string) {
+		const state = matchState.current;
+		matchState.sendMove(lan, state.game?.gameIndex ?? 0, fen);
 	}
 
 	onMount(async () => {
 		touch = isTouchDevice();
 		game = new PlatformerGame(stage, makeCallbacks());
 		await game.start({ mode, floor });
+		if (mode === 'match') stopMatch = connectMatch();
 	});
 
-	onDestroy(() => game?.destroy());
+	onDestroy(() => {
+		stopMatch?.();
+		game?.destroy();
+		if (mode === 'match') matchState.leave();
+	});
 
 	function leave() {
+		if (mode === 'match') matchState.resign();
 		game?.leave(chessState.moveCount());
+	}
+
+	// A match that ends while the lobby is gone still has to go somewhere.
+	$: if (mode === 'match' && $matchState.status === 'disconnected') {
+		goto({ name: 'menu' });
 	}
 </script>
 
@@ -92,6 +233,7 @@
 				onEnPassant={() => game?.enPassant()}
 				onDrawRisk={(risk) => game?.drawRisk(risk.message)}
 				onGameOver={(detail) => game?.gameOver(detail, chessState.moveCount())}
+				onIntent={mode === 'match' ? sendIntent : null}
 			/>
 		</div>
 	</section>

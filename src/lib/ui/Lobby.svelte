@@ -150,17 +150,7 @@
 		<p class="mv-caption centre">Both players climb under these. The host decides.</p>
 
 		<div class="rows">
-			<div class="row">
-				<span>Move cooldown</span>
-				<button
-					class="opt"
-					on:click={() =>
-						cycle(COOLDOWN_OPTIONS, config.moveCooldownMs, (v) => (config.moveCooldownMs = v))}
-				>
-					{optionFor(COOLDOWN_OPTIONS, config.moveCooldownMs).label}
-				</button>
-			</div>
-			<div class="row">
+	<div class="row">
 				<span>Climb to win</span>
 				<button
 					class="opt"
@@ -209,6 +199,21 @@
 					{config.chessMode === 'shared' ? 'Play each other' : 'Each vs the engine'}
 				</button>
 			</div>
+			{#if config.chessMode === 'shared'}
+				<!-- The cooldown is what replaces turn-taking, so it is meaningless
+				     unless the two of you are actually sharing a board. It sits under
+				     Chess because it is a detail of that choice, not a peer of it. -->
+				<div class="row">
+					<span>Move cooldown</span>
+					<button
+						class="opt"
+						on:click={() =>
+							cycle(COOLDOWN_OPTIONS, config.moveCooldownMs, (v) => (config.moveCooldownMs = v))}
+					>
+						{optionFor(COOLDOWN_OPTIONS, config.moveCooldownMs).label}
+					</button>
+				</div>
+			{/if}
 			<div class="row">
 				<span>Opening</span>
 				<button

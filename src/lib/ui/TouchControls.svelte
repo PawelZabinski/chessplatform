@@ -10,7 +10,6 @@
 
 	let surface: HTMLDivElement;
 	let gestures: Gestures | null = null;
-	let direction: 'left' | 'right' | null = null;
 	let showHints = false;
 
 	const HINT_KEY = 'chessplatform:touch-hints-seen';
@@ -19,22 +18,16 @@
 	$: charge = hud?.slowCharge ?? 0;
 	$: slowReady = hud?.slowActive || charge >= SLOWMO_MIN_CHARGE;
 	$: controlLit = (hud?.controlRemaining ?? 0) > 0;
+	$: onGround = hud?.onGround ?? true;
 
 	onMount(() => {
 		gestures = new Gestures(surface, input);
-
-		// The stick indicator is the only thing that needs per-frame feedback, and
-		// polling it is cheaper than pushing an event out of the recogniser on
-		// every pointermove.
-		const tick = setInterval(() => (direction = gestures?.direction ?? null), 60);
 
 		try {
 			showHints = localStorage.getItem(HINT_KEY) === null;
 		} catch {
 			showHints = true; // private browsing: show them, they are cheap to dismiss
 		}
-
-		return () => clearInterval(tick);
 	});
 
 	onDestroy(() => gestures?.destroy());
@@ -65,31 +58,39 @@
 	aria-label="Climb controls: drag to steer, tap to jump, swipe down to drop"
 ></div>
 
-{#if direction}
-	<div class="stick {direction}" aria-hidden="true">{direction === 'left' ? '◀' : '▶'}</div>
-{/if}
+<!--
+	The rail holds only what can be used right now.
 
+	A permanently visible slow-motion button that does nothing for the first
+	minute of a run is furniture, and the charge meter it carried was answering a
+	question nobody had yet asked. It appears when it becomes usable, which is
+	also the clearest possible signal that it has.
+-->
 <div class="rail">
-	<button
-		class="orb slow"
-		class:ready={slowReady}
-		class:active={hud?.slowActive}
-		type="button"
-		disabled={!slowReady}
-		style:--charge="{Math.round(Math.min(1, charge) * 100)}%"
-		on:pointerdown|preventDefault={tapSlow}
-		aria-label="Slow motion"
-	>
-		<span class="glyph">◑</span>
-		<span class="caption">Slow</span>
-	</button>
+	{#if slowReady}
+		<button
+			class="orb slow"
+			class:active={hud?.slowActive}
+			type="button"
+			on:pointerdown|preventDefault={tapSlow}
+			aria-label="Slow motion"
+		>
+			<span class="glyph">◑</span>
+			<span class="caption">Slow</span>
+		</button>
+	{/if}
 
-	<button class="orb help" type="button" on:click={() => (showHints = true)} aria-label="Controls">
-		?
-	</button>
+	{#if onGround}
+		<!-- Only while you are still standing at the bottom. Once the climb is
+		     under way the screen belongs to the game, and a help button hanging
+		     over it is one more thing between you and the tower. -->
+		<button class="orb help" type="button" on:click={() => (showHints = true)} aria-label="Controls">
+			?
+		</button>
+	{/if}
 </div>
 
-{#if controlLit}
+{#if controlLit && onGround}
 	<div class="lit" aria-hidden="true">Control — drag to run, tap to jump</div>
 {/if}
 
@@ -120,31 +121,6 @@
 		touch-action: none;
 		-webkit-tap-highlight-color: transparent;
 		/* No background: it is a hit target, not a thing you should be able to see. */
-	}
-
-	/* Where the stick is pushed, drawn at the edge so it never covers the climber. */
-	.stick {
-		position: absolute;
-		top: 50%;
-		transform: translateY(-50%);
-		width: 44px;
-		height: 44px;
-		display: grid;
-		place-items: center;
-		font-size: 20px;
-		color: var(--gold-bright);
-		background: rgba(59, 42, 28, 0.55);
-		border: 2px solid var(--gold);
-		border-radius: 50%;
-		pointer-events: none;
-		text-shadow: 0 1px 2px #000;
-	}
-
-	.stick.left {
-		left: 10px;
-	}
-	.stick.right {
-		right: 10px;
 	}
 
 	.rail {
@@ -180,31 +156,16 @@
 		opacity: 0.75;
 	}
 
-	/*
-	 * The charge meter is the button's own fill, so the ability reads as one
-	 * object rather than a button plus a bar somewhere else.
-	 */
 	.orb.slow {
-		background:
-			linear-gradient(0deg, rgba(62, 96, 158, 0.85) var(--charge), transparent var(--charge)),
-			rgba(59, 42, 28, 0.7);
-		opacity: 0.55;
-		gap: 1px;
-	}
-
-	.orb.slow.ready {
-		opacity: 1;
+		background: rgba(62, 96, 158, 0.85);
 		border-color: #9ecbf0;
 		color: #dcefff;
+		gap: 1px;
 	}
 
 	.orb.slow.active {
 		border-color: #dcefff;
 		box-shadow: 0 0 0 3px rgba(158, 203, 240, 0.35);
-	}
-
-	.orb.slow:disabled {
-		cursor: default;
 	}
 
 	.glyph {

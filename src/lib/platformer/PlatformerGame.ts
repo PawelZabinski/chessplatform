@@ -37,6 +37,10 @@ import {
 } from './world/Player';
 import type { RivalClimber } from './render/renderer';
 import { BAND_HEIGHT, overlaps } from './world/types';
+
+/** Acceleration towards, and away from, the run speed (px/s²). See handleMovement. */
+const ACCEL_RUN = 2600;
+const ACCEL_STOP = 4200;
 import { GROUND_INSET, World } from './world/World';
 
 export type GameMode = 'tower' | 'endless' | 'match';
@@ -64,6 +68,8 @@ export interface HudState {
 	danger: number;
 	altitude: number;
 	/** Bands to take the floor by height alone. 0 outside the tower. */
+	/** True while the climber is still on the starting ground. */
+	onGround: boolean;
 	summit: number;
 	/** How far up the summit the climber is, 0–1. */
 	summitProgress: number;
@@ -286,7 +292,7 @@ export class PlatformerGame {
 		}
 
 		this.handleAbilities();
-		this.handleMovement();
+		this.handleMovement(step);
 
 		this.player.step(step, this.world.platforms, this.surface.width);
 		this.player.updateAnimation();
@@ -319,7 +325,7 @@ export class PlatformerGame {
 	 * Keyboard and touch steering is entirely a gift of the control rune. Without
 	 * one, the only input that does anything is the brake.
 	 */
-	private handleMovement() {
+	private handleMovement(step: number) {
 		if (!this.controlActive) {
 			if (this.input.consume('brake')) this.player.vx = 0;
 			// Drop-through stays available: it only ever moves you toward the lava.
@@ -332,9 +338,17 @@ export class PlatformerGame {
 
 		const left = this.input.isHeld('left');
 		const right = this.input.isHeld('right');
-		if (left && !right) this.player.vx = -RUN_SPEED;
-		else if (right && !left) this.player.vx = RUN_SPEED;
-		else this.player.vx = 0;
+		const target = left && !right ? -RUN_SPEED : right && !left ? RUN_SPEED : 0;
+
+		// Ease towards the target speed instead of snapping to it. A thumb drag is
+		// a continuous gesture, and a climber that jumped instantly between full
+		// speed and a dead stop read as jittery against it — the finger moves
+		// smoothly, so the frog should too. Stopping is quicker than starting, so
+		// letting go still feels like a brake rather than a coast.
+		const rate = target === 0 ? ACCEL_STOP : ACCEL_RUN;
+		const delta = target - this.player.vx;
+		const maxChange = rate * step;
+		this.player.vx += Math.abs(delta) <= maxChange ? delta : Math.sign(delta) * maxChange;
 
 		if (this.input.consume('jump')) {
 			if (this.player.onGround) {
@@ -611,6 +625,17 @@ export class PlatformerGame {
 	gameOver(detail: { reason: string; result: number }, movesPlayed: number) {
 		if (this.ended || this.completing) return;
 
+		// A duel's results belong to the server: it decides the fling, the
+		// handicap and the next position, and a client dealing its own would put
+		// the two boards out of step immediately.
+		if (this.mode === 'match') {
+			if (detail.result === 1) {
+				this.gamesWon += 1;
+				this.player.launch(-2000);
+			}
+			return;
+		}
+
 		if (this.mode === 'tower') {
 			if (detail.result >= 0.5) this.playFloorCompletion(detail.reason, detail.result, movesPlayed);
 			else this.endRun(detail.reason, detail.result, false, movesPlayed);
@@ -643,6 +668,24 @@ export class PlatformerGame {
 
 		this.tier = tierFor(this.stage.index, this.gamesWon);
 		this.callbacks.loadPosition({ engine: engineForTier(this.tier) });
+	}
+
+	/**
+	 * The server dealt a new game.
+	 *
+	 * In a duel the board is reloaded by the match wiring, not by us — this only
+	 * needs to keep the climb's own bookkeeping in step.
+	 */
+	matchGameDealt() {
+		this.gamesWon += 0; // bookkeeping only; the climb itself never resets
+		this.callbacks.onBanner({ kicker: 'NEW GAME', title: 'The board is reset', accent: '#f6e2a0' });
+		setTimeout(() => this.callbacks.onBanner(null), 1500);
+	}
+
+	/** The server ended the match. Its word is final, whatever the local climb thinks. */
+	matchOver(reason: string, result: number) {
+		if (this.ended) return;
+		this.endRun(reason, result, false, 0);
 	}
 
 	/** Player pressed the exit. */
@@ -777,6 +820,7 @@ export class PlatformerGame {
 			slowRemaining,
 			danger: this.lava.proximity(this.player.feetY),
 			altitude: Math.min(1, this.maxBand / 45),
+			onGround: this.player.onGround && this.maxBand === 0,
 			summit: this.summit,
 			summitProgress: this.summit ? Math.min(1, this.maxBand / this.summit) : 0,
 			stars: this.summit ? starsForHeight(this.maxBand, this.summit) : 0
