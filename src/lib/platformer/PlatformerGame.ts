@@ -631,6 +631,24 @@ export class PlatformerGame {
 		this.toast(message, 'bad');
 	}
 
+	/** The position has run out of mating material. */
+	insufficientMaterial(movesPlayed: number, serverAuthoritative = false) {
+		if (this.ended || this.completing) return;
+
+		// A shared duel's server deals the replacement board. A local reload here
+		// would briefly put the two players into different games.
+		if (serverAuthoritative) return;
+
+		if (this.mode === 'tower') {
+			this.toast('Nothing left to mate with — climb on', 'cool');
+			return;
+		}
+
+		this.movesBanked += movesPlayed;
+		this.toast('Bare board — fresh pieces dealt', 'cool');
+		this.callbacks.loadPosition({ engine: engineForTier(this.tier) });
+	}
+
 	/** The chess game finished. */
 	gameOver(detail: { reason: string; result: number }, movesPlayed: number) {
 		if (this.ended || this.completing) return;

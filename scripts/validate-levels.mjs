@@ -41,7 +41,8 @@ for (const entry of floors) {
 	const problems = [];
 	if (chess.turn() !== 'w') problems.push('Black to move (the player is always White)');
 	if (chess.isGameOver()) problems.push('position is already over');
-	if (chess.isInsufficientMaterial()) problems.push('insufficient material — instant draw');
+	if (chess.isInsufficientMaterial())
+		problems.push('insufficient material — cannot be won on the board');
 
 	const legalMoves = chess.moves().length;
 	if (legalMoves < MIN_INTERESTING_MOVES) {

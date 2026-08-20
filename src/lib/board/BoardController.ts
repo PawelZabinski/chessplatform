@@ -27,13 +27,11 @@ import { log } from '$lib/diagnostics';
  * between chess.js state and what is on screen.
  */
 
-export type GameOverReason =
-	| 'checkmate'
-	| 'king captured'
-	| 'stalemate'
-	| 'insufficient material'
-	| 'repetition'
-	| 'fifty-move rule';
+/**
+ * Games end on checkmate and stalemate only; repetition and bare-board
+ * positions never decide one (see onInsufficientMaterial).
+ */
+export type GameOverReason = 'checkmate' | 'king captured' | 'stalemate' | 'fifty-move rule';
 
 export interface GameOverDetail {
 	reason: GameOverReason;
@@ -43,7 +41,7 @@ export interface GameOverDetail {
 
 /** Warning that the current game is drifting towards a drawn result. */
 export interface DrawRisk {
-	kind: 'repetition' | 'fifty-move';
+	kind: 'fifty-move';
 	/** How many more of the same before the draw triggers. */
 	movesRemaining: number;
 	message: string;
@@ -65,6 +63,12 @@ export interface BoardCallbacks {
 	onPositionChange?(fen: string): void;
 	/** Fired when the game drifts towards a draw, while it is still avoidable. */
 	onDrawRisk?(risk: DrawRisk): void;
+	/**
+	 * Fired when the position can no longer deliver checkmate. The game does
+	 * NOT end: the board stays live and the listener decides what the mode
+	 * makes of it — deal a fresh position, play on for height, or ignore.
+	 */
+	onInsufficientMaterial?(): void;
 }
 
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
@@ -104,8 +108,8 @@ export class BoardController {
 	private positionToken = 0;
 	private gameOver = false;
 
-	/** Position sightings for the repetition warning, keyed by FEN prefix. */
-	private positionCounts = new Map<string, number>();
+	/** True once the current position has run out of mating material. */
+	private materialInsufficient = false;
 
 	/** Slow-motion stretches the player's move, never the opponent's reply. */
 	private slowMotion = false;
@@ -322,10 +326,8 @@ export class BoardController {
 
 		this.chess.load(fen);
 		this.gameOver = false;
-		// Seed the tally with the starting position, so a shuffle back to it is
-		// recognised as a repeat and the warning lands a full cycle earlier.
-		this.positionCounts.clear();
-		this.countPosition();
+		// A freshly dealt position has all its chances again.
+		this.materialInsufficient = this.chess.isInsufficientMaterial();
 
 		this.ground.set({
 			fen: this.chess.fen(),
@@ -394,6 +396,8 @@ export class BoardController {
 		this.callbacks.onPositionChange?.(this.chess.fen());
 
 		if (this.reportGameOverIfFinished()) return;
+
+		if (this.reportInsufficientMaterial()) return;
 
 		const risk = this.assessDrawRisk();
 		if (risk) this.callbacks.onDrawRisk?.(risk);
@@ -466,20 +470,32 @@ export class BoardController {
 			return { reason: 'checkmate', result: this.chess.turn() === 'w' ? 0 : 1 };
 		}
 		if (this.chess.isStalemate()) return { reason: 'stalemate', result: 0.5 };
-		if (this.chess.isInsufficientMaterial())
-			return { reason: 'insufficient material', result: 0.5 };
-		if (this.chess.isThreefoldRepetition()) return { reason: 'repetition', result: 0.5 };
-		if (this.chess.isDraw()) return { reason: 'fifty-move rule', result: 0.5 };
+		// Repetition and insufficient material are not endings here — the board
+		// stays live and onInsufficientMaterial tells the mode what happened.
+		if (this.chess.isDrawByFiftyMoves()) {
+			return { reason: 'fifty-move rule', result: 0.5 };
+		}
 		return null;
 	}
 
-	/** Records a sighting of the current position, returning the running count. */
-	private countPosition(): number {
-		const [placement, turn, castling, ep] = this.chess.fen().split(' ');
-		const key = `${placement} ${turn} ${castling} ${ep}`;
-		const seen = (this.positionCounts.get(key) ?? 0) + 1;
-		this.positionCounts.set(key, seen);
-		return seen;
+	/**
+	 * Notices the position running out of mating material and reports it once.
+	 * The board itself carries on: checkmate is off the table, but the mode
+	 * still has plans — endless deals a fresh game, tower floors can still be
+	 * cleared by height, and promotion can even bring the pieces back.
+	 */
+	private reportInsufficientMaterial(): boolean {
+		const insufficient = this.chess.isInsufficientMaterial();
+		const becameInsufficient = insufficient && !this.materialInsufficient;
+		this.materialInsufficient = insufficient;
+		if (!becameInsufficient) return false;
+
+		// Endless mode deals a replacement position synchronously from this
+		// callback. Detect that reload so the old move pipeline does not continue
+		// into draw warnings or launch a second engine reply on the new board.
+		const token = this.positionToken;
+		this.callbacks.onInsufficientMaterial?.();
+		return this.positionToken !== token;
 	}
 
 	/** Colour whose king is absent from the board, if any. */
@@ -492,8 +508,7 @@ export class BoardController {
 
 	/**
 	 * Warns while a draw is still avoidable, rather than announcing it after the
-	 * fact. Repetition is counted here because chess.js only reports the third
-	 * occurrence, by which point the game is already drawn.
+	 * fact.
 	 */
 	private assessDrawRisk(): DrawRisk | null {
 		const [placement, turn, castling, ep, halfmove] = this.chess.fen().split(' ');
@@ -506,18 +521,6 @@ export class BoardController {
 				kind: 'fifty-move',
 				movesRemaining,
 				message: `${movesRemaining} move${movesRemaining === 1 ? '' : 's'} until a draw — capture or push a pawn`
-			};
-		}
-
-		// Threefold repetition: warn on the second sighting, while there is still
-		// a choice to be made.
-		const seen = this.countPosition();
-
-		if (seen === 2) {
-			return {
-				kind: 'repetition',
-				movesRemaining: 1,
-				message: 'Repeating — one more and the game is drawn'
 			};
 		}
 
@@ -599,14 +602,16 @@ export class BoardController {
 	 * caused a hang worth recording:
 	 *
 	 * A spike removes one of your pieces. Remove the last one and White is down to
-	 * a bare king, which is insufficient material — a decided game. Nothing
-	 * reported it, because this method skipped the game-over check, but
-	 * `legalDests` consults the same predicate and duly handed chessground an
-	 * empty map. The board then sat there fully rendered, refusing every piece,
-	 * with no result and no way out but the lava.
+	 * a bare king, which is insufficient material. Nothing reported it, because
+	 * this method skipped the game-over check, but `legalDests` consults the same
+	 * predicate and duly handed chessground an empty map. The board then sat
+	 * there fully rendered, refusing every piece, with no result and no way out
+	 * but the lava.
 	 *
 	 * So: still no move callback, but the position is re-examined exactly as a
-	 * played move would be. An edit that ends the game ends it.
+	 * played move would be. An edit that ends the game ends it — and an edit that
+	 * only empties the position of mating material reports onInsufficientMaterial
+	 * while the board stays live.
 	 */
 	setFenSilently(fen: string) {
 		// Any engine reply already in flight was computed against the old position;
@@ -622,6 +627,8 @@ export class BoardController {
 		log.info('board', 'Position edited', { fen: this.chess.fen(), turn: this.chess.turn() });
 
 		if (this.reportGameOverIfFinished()) return;
+		// A spike can strip the last mating material; that is news, not an ending.
+		if (this.reportInsufficientMaterial()) return;
 		// The edit may also have left the opponent on move with no reply pending.
 		this.maybePlayOpponent();
 	}

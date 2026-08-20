@@ -210,8 +210,24 @@ export class Match {
 	 * White side. A level game just alternates colours by game index, so neither
 	 * seat accumulates the first-move edge.
 	 */
-	private dealGame(): { fen: string; note?: string } {
+	private dealGame(freshPieces = false): { fen: string; note?: string } {
 		this.gameIndex += 1;
+
+		// A dead position is replaced with an ordinary new chess game. In
+		// particular, do not reapply a custom king-only opening or a handicap rung,
+		// or the replacement would immediately be dead as well.
+		if (freshPieces) {
+			const fen = this.config.handicap.level;
+			const aIsWhite = this.gameIndex % 2 === 0;
+			for (const seat of SEATS) this.colours[seat] = 'w';
+			const [first, second] = [...this.players.keys()];
+			if (first && second) {
+				this.colours[first] = aIsWhite ? 'w' : 'b';
+				this.colours[second] = aIsWhite ? 'b' : 'w';
+			}
+			this.chess.load(fen);
+			return { fen, note: 'Insufficient material — fresh pieces dealt' };
+		}
 
 		const trailing = [...this.players.values()]
 			.filter((p) => p.losses > 0)
@@ -430,10 +446,16 @@ export class Match {
 				? { winner: 'mover', reason: 'checkmate' }
 				: { winner: null, reason: 'stalemate' };
 		}
-		if (this.chess.isInsufficientMaterial())
+		// Repetition is deliberately ignored. A dead position is different: deal a
+		// complete new set of pieces so the climb can continue.
+		if (this.chess.isInsufficientMaterial()) {
 			return { winner: null, reason: 'insufficient material' };
-		if (this.chess.isThreefoldRepetition()) return { winner: null, reason: 'repetition' };
-		if (this.chess.isDraw()) return { winner: null, reason: 'fifty-move rule' };
+		}
+		// The fifty-move rule remains the backstop against an endless sequence with
+		// no pawn move or capture.
+		if (this.chess.isDrawByFiftyMoves()) {
+			return { winner: null, reason: 'fifty-move rule' };
+		}
 		return null;
 	}
 
@@ -490,7 +512,7 @@ export class Match {
 			return out;
 		}
 
-		const next = this.dealGame();
+		const next = this.dealGame(ending.reason === 'insufficient material');
 		for (const seat of this.seats) {
 			out.push({ to: seat, message: this.gameStartFor(seat, next) });
 		}

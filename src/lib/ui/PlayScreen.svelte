@@ -238,6 +238,11 @@
 				onMove={(move) => game?.applyMove(move)}
 				onEnPassant={() => game?.enPassant()}
 				onDrawRisk={(risk) => game?.drawRisk(risk.message)}
+				onInsufficientMaterial={() =>
+					game?.insufficientMaterial(
+						chessState.moveCount(),
+						mode === 'match' && matchState.current.game?.shared === true
+					)}
 				onGameOver={(detail) => game?.gameOver(detail, chessState.moveCount())}
 				onIntent={mode === 'match' ? sendIntent : null}
 			/>

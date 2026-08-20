@@ -272,6 +272,85 @@ check('race ignores move intents', sawMove, false);
 host5.ws.close();
 for (const p of room5) p.ws.close();
 
+// 18. Threefold repetition is deliberately playable in a duel.
+const repA = client('RA');
+const repB = client('RB');
+await repA.open();
+await repB.open();
+repA.send({ t: 'join', displayName: 'Repeat A' });
+const repLobby = await repA.next((m) => m.t === 'lobby');
+repB.send({ t: 'join', displayName: 'Repeat B', lobbyCode: repLobby.lobbyCode });
+await repB.next((m) => m.t === 'lobby');
+repA.send({ t: 'config', config: { moveCooldownMs: 0, chessMode: 'shared' } });
+await repA.next((m) => m.t === 'lobby' && m.config.moveCooldownMs === 0);
+repA.send({ t: 'ready', ready: true });
+repB.send({ t: 'ready', ready: true });
+const repStart = await repA.next((m) => m.t === 'start');
+let repFen = repStart.firstGame.fen;
+const repetition = [
+	[repA, 'g1f3'],
+	[repB, 'g8f6'],
+	[repA, 'f3g1'],
+	[repB, 'f6g8'],
+	[repA, 'g1f3'],
+	[repB, 'g8f6'],
+	[repA, 'f3g1'],
+	[repB, 'f6g8']
+];
+for (const [who, lan] of repetition) {
+	who.send({ t: 'move', lan, gameIndex: 0, expectedFen: repFen });
+	repFen = (await who.next((m) => m.t === 'moveApplied' && m.lan === lan)).fen;
+}
+await wait(50);
+check('repetition does not end duel', repA.inbox.some((m) => m.t === 'gameEnded'), false);
+repA.send({ t: 'move', lan: 'e2e4', gameIndex: 0, expectedFen: repFen });
+check(
+	'play continues after repetition',
+	(await repA.next((m) => m.t === 'moveApplied' && m.lan === 'e2e4')).lan,
+	'e2e4'
+);
+repA.ws.close();
+repB.ws.close();
+
+// 19. A king-only duel is replaced with a full, standard chess position.
+const bareA = client('KA');
+const bareB = client('KB');
+await bareA.open();
+await bareB.open();
+bareA.send({ t: 'join', displayName: 'King A' });
+const bareLobby = await bareA.next((m) => m.t === 'lobby');
+bareB.send({ t: 'join', displayName: 'King B', lobbyCode: bareLobby.lobbyCode });
+await bareB.next((m) => m.t === 'lobby');
+bareA.send({
+	t: 'config',
+	config: {
+		moveCooldownMs: 0,
+		chessMode: 'shared',
+		opening: 'custom',
+		customFen: '8/8/8/8/8/8/4K3/7k w - - 0 1'
+	}
+});
+await bareA.next((m) => m.t === 'lobby' && m.config.opening === 'custom');
+bareA.send({ t: 'ready', ready: true });
+bareB.send({ t: 'ready', ready: true });
+const bareStart = await bareA.next((m) => m.t === 'start');
+bareA.send({ t: 'move', lan: 'e2e3', gameIndex: 0, expectedFen: bareStart.firstGame.fen });
+await bareA.next((m) => m.t === 'moveApplied' && m.lan === 'e2e3');
+const bareEnded = await bareA.next((m) => m.t === 'gameEnded' && m.gameIndex === 0);
+check(
+	'insufficient material ends current duel game',
+	`${bareEnded.reason}:${bareEnded.winner}`,
+	'insufficient material:null'
+);
+const bareNext = await bareA.next((m) => m.t === 'gameStart' && m.gameIndex === 1);
+check(
+	'insufficient material deals fresh pieces',
+	bareNext.fen,
+	'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
+);
+bareA.ws.close();
+bareB.ws.close();
+
 clearTimeout(guard);
 const failures = Object.entries(results).filter(([, v]) => v.startsWith('FAIL'));
 console.log('\n=== RESULTS ===');

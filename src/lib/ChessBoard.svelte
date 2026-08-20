@@ -48,6 +48,8 @@
 	export let onMove: (move: Move) => void = () => {};
 	export let onGameOver: (detail: GameOverDetail) => void = () => {};
 	export let onDrawRisk: (risk: DrawRisk) => void = () => {};
+	/** The board can no longer deliver checkmate; the game does not end. */
+	export let onInsufficientMaterial: () => void = () => {};
 	export let onEnPassant: () => void = () => {};
 	export let handle: BoardHandle | null = null;
 	/**
@@ -100,7 +102,8 @@
 			},
 			onPositionChange: (fen) => chessState.setFen(fen),
 			onGameOver: (detail) => onGameOver(detail),
-			onDrawRisk: (risk) => onDrawRisk(risk)
+			onDrawRisk: (risk) => onDrawRisk(risk),
+			onInsufficientMaterial: () => onInsufficientMaterial()
 		});
 		controller.setOpponent(engineOpponent);
 
