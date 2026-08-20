@@ -45,7 +45,10 @@
     },
     "type": "module",
     "dependencies": {
+        "@types/node": "^26.2.0",
+        "@types/ws": "^8.18.1",
         "chess.js": "^1.4.0",
-        "chessground": "^8.4.0"
+        "chessground": "^8.4.0",
+        "ws": "^8.21.3"
     }
 }
