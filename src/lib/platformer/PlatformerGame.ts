@@ -11,6 +11,7 @@ import {
 import { engineForTier, tierFor, tierLabel } from '$game/difficulty';
 import { engineForFloor, floorByNumber, type TowerFloor } from '$game/levels';
 import { liftForMove, type LiftMove } from '$game/lift';
+import type { ClimberPose } from '$game/multiplayer/protocol';
 import { MAX_STARS, starsForHeight, summitFor, type Stars } from '$game/summit';
 import {
 	LEVELS_PER_STAGE,
@@ -19,6 +20,7 @@ import {
 	type StageConfig
 } from '$game/stages';
 import { themeForStage, themeForWing, type TerrainTheme } from '$game/world/themes';
+import { randomWorldSeed, towerWorldSeed } from '$game/worldSeed';
 import { LEVELS_PER_COMBO_STEP, MAX_COMBO_MULTIPLIER } from '$game/config';
 import { log } from '$lib/diagnostics';
 import { Input, isTouchDevice } from './engine/Input';
@@ -48,6 +50,8 @@ export type GameMode = 'tower' | 'endless' | 'match';
 export interface StartOptions {
 	mode: GameMode;
 	floor?: number;
+	/** Supplied by the match server; tower floors derive a stable seed locally. */
+	seed?: number;
 }
 
 /** Everything the UI needs to render the HUD, published every frame. */
@@ -119,8 +123,8 @@ export interface GameCallbacks {
 	restorePiece(): void;
 	clearSpikesRequested(): void;
 	setBoardSlowMotion(active: boolean): void;
-	/** Tell the match server how high we are. Absent outside a race. */
-	reportHeight?(bands: number): void;
+	/** Tell the match server where we are. Absent outside a race. */
+	reportPosition?(bands: number, pose: ClimberPose): void;
 }
 
 /**
@@ -163,16 +167,18 @@ export class PlatformerGame {
 	/**
 	 * Rivals in a race, keyed by seat.
 	 *
-	 * Their heights arrive a few times a second, so the drawn position is eased
-	 * towards the reported one rather than snapped to it — at five updates a
-	 * second a snap reads as teleporting, and the race is about relative
-	 * position, which smoothing preserves exactly.
+	 * Their normalized poses and velocities arrive ten times a second. We predict
+	 * forward between reports, then ease any correction into the authoritative
+	 * pose instead of placing everybody in artificial lanes.
 	 */
-	private rivals = new Map<string, RivalClimber & { targetY: number }>();
+	private rivals = new Map<
+		string,
+		RivalClimber & { targetX: number; targetY: number; vx: number; vy: number }
+	>();
 	/** How often to tell the server where we are, in simulated milliseconds. */
-	private lastHeightReport = 0;
-	/** Hue for our own climber in a race; 0 leaves the sprite's own green. */
-	private playerHue = 0;
+	private lastPositionReport = 0;
+	/** Lobby-assigned headband colour; the frog's body remains green. */
+	private playerColour?: string;
 
 	private controlUntil = 0;
 	private slowCharge = 0;
@@ -218,6 +224,7 @@ export class PlatformerGame {
 		this.gamesWon = 0;
 		this.tier = 1;
 		this.movesBanked = 0;
+		this.lastPositionReport = 0;
 		this.controlUntil = 0;
 		this.slowCharge = 0;
 		this.slowUntil = 0;
@@ -234,8 +241,14 @@ export class PlatformerGame {
 		const { width, height } = this.surface;
 		const baseline = height;
 
-		this.world = new World(width, baseline, this.floor?.rules ?? {}, (level) =>
-			this.themeForLevel(level)
+		const worldSeed =
+			options.seed ?? (this.floor ? towerWorldSeed(this.floor.floor) : randomWorldSeed());
+		this.world = new World(
+			width,
+			baseline,
+			this.floor?.rules ?? {},
+			(level) => this.themeForLevel(level),
+			worldSeed
 		);
 		this.world.ensureGenerated(0);
 
@@ -258,6 +271,7 @@ export class PlatformerGame {
 
 		log.info('run', `Run started: ${this.mode}`, {
 			floor: this.floor?.floor,
+			worldSeed,
 			floorName: this.floor?.name,
 			view: `${Math.round(width)}x${Math.round(height)}`
 		});
@@ -552,31 +566,45 @@ export class PlatformerGame {
 	/**
 	 * Sets, or updates, where a rival is.
 	 *
-	 * Called from outside with a height in bands; the conversion to world space
-	 * happens here because bands are the only unit the network layer knows.
+	 * Network coordinates are normalized against the sender's viewport, then
+	 * projected into ours. This keeps a phone and desktop in the same relative
+	 * place without pretending their canvases have identical pixel widths.
 	 */
-	setRival(seat: string, name: string, hue: number, css: string, bands: number, lane: number) {
-		// A height that is not a number would propagate through the eased position
-		// as NaN and silently stop the climber drawing at all.
-		const safeBands = Number.isFinite(bands) ? bands : 0;
-		const y = this.surface.height - safeBands * BAND_HEIGHT;
+	setRival(seat: string, name: string, css: string, pose: ClimberPose) {
+		const safeX = Number.isFinite(pose.x) ? Math.max(0, Math.min(1, pose.x)) : 0.5;
+		const safeY = Number.isFinite(pose.y) ? pose.y : 0;
+		const x = safeX * Math.max(0, this.surface.width - this.player.width);
+		const y = this.world.ground.y - safeY;
 		const existing = this.rivals.get(seat);
-		// Lanes fan rivals out horizontally so five climbers at the same height do
-		// not stack into one indistinguishable blob.
-		const x = this.surface.width * (0.16 + 0.17 * (lane % 5));
 
 		if (existing) {
+			existing.targetX = x;
 			existing.targetY = y;
 			existing.name = name;
-			existing.x = x;
+			existing.css = css;
+			existing.vx = pose.vx;
+			existing.vy = pose.vy;
+			existing.facing = pose.facing;
+			existing.anim = pose.anim;
 		} else {
-			this.rivals.set(seat, { name, hue, css, x, y, targetY: y });
+			this.rivals.set(seat, {
+				name,
+				css,
+				x,
+				y,
+				targetX: x,
+				targetY: y,
+				vx: pose.vx,
+				vy: pose.vy,
+				facing: pose.facing,
+				anim: pose.anim
+			});
 		}
 	}
 
 	/** Sets our own climber's colour, matching the seat the server gave us. */
-	setPlayerColour(hue: number) {
-		this.playerHue = hue;
+	setPlayerColour(css: string) {
+		this.playerColour = css;
 	}
 
 	removeRival(seat: string) {
@@ -585,13 +613,26 @@ export class PlatformerGame {
 
 	private updateRivals(step: number) {
 		for (const rival of this.rivals.values()) {
-			// Ease towards the last reported height; see the field comment.
-			rival.y += (rival.targetY - rival.y) * Math.min(1, step * 6);
+			const dt = step / 1000;
+			const travelWidth = Math.max(0, this.surface.width - this.player.width);
+			rival.targetX += rival.vx * travelWidth * dt;
+			rival.targetY += rival.vy * dt;
+			rival.targetX = Math.max(0, Math.min(travelWidth, rival.targetX));
+			const follow = Math.min(1, (step / 1000) * 24);
+			rival.x += (rival.targetX - rival.x) * follow;
+			rival.y += (rival.targetY - rival.y) * follow;
 		}
 
-		if (this.loop.simTime - this.lastHeightReport >= 200) {
-			this.lastHeightReport = this.loop.simTime;
-			this.callbacks.reportHeight?.(this.maxBand);
+		if (this.loop.simTime - this.lastPositionReport >= 100) {
+			this.lastPositionReport = this.loop.simTime;
+			this.callbacks.reportPosition?.(this.maxBand, {
+				x: this.player.x / Math.max(1, this.surface.width - this.player.width),
+				y: this.world.ground.y - this.player.y,
+				vx: this.player.vx / Math.max(1, this.surface.width - this.player.width),
+				vy: this.player.vy,
+				facing: this.player.facing,
+				anim: this.player.anim
+			});
 		}
 	}
 
@@ -866,7 +907,7 @@ export class PlatformerGame {
 			this.lava,
 			this.sprites,
 			{
-				playerHue: this.playerHue,
+				playerColour: this.playerColour,
 				rivals: this.rivals.size ? [...this.rivals.values()] : undefined,
 				cameraY: this.cameraY,
 				theme: this.theme,

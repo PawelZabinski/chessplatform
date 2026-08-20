@@ -1,4 +1,5 @@
 import { pickPlatformCount, runeChance, stageForLevel } from '$game/stages';
+import { seededRandom } from '$game/worldSeed';
 import type { TerrainTheme } from '$game/world/themes';
 import { BAND_HEIGHT, type Ground, type Platform, type Rune, type Spike } from './types';
 
@@ -38,7 +39,8 @@ export class World {
 		private width: number,
 		private readonly baseline: number,
 		private readonly rules: FieldRules,
-		private readonly themeForLevel: (level: number) => TerrainTheme
+		private readonly themeForLevel: (level: number) => TerrainTheme,
+		private readonly seed: number
 	) {
 		this.ground = { y: baseline - GROUND_INSET, theme: themeForLevel(0) };
 
@@ -104,6 +106,8 @@ export class World {
 	}
 
 	private buildBand(level: number) {
+		const stream = level * 16;
+		const countRandom = seededRandom(this.seed, stream);
 		const stage = stageForLevel(level);
 		const theme = this.themeForLevel(level);
 		const spikeRate = this.rules.spikeChance ?? stage.spikeChance;
@@ -111,18 +115,22 @@ export class World {
 		const blockedRate = this.rules.blockedChance ?? stage.blockedChance;
 
 		const y = this.baseline - level * BAND_HEIGHT;
-		const count = pickPlatformCount(stage, Math.random());
+		const count = pickPlatformCount(stage, countRandom());
 
 		const half = PLATFORM_WIDTH / 2;
 		const spacing = PLATFORM_WIDTH + 40;
 		const placed: number[] = [];
 
 		for (let i = 0; i < count; i++) {
-			const centre = this.findSlot(half, this.width - half, spacing, placed);
+			// Slot retries must not alter hazard rolls. Keeping independent streams
+			// preserves the same platform types on different viewport widths.
+			const slotRandom = seededRandom(this.seed, stream + i * 2 + 1);
+			const featureRandom = seededRandom(this.seed, stream + i * 2 + 2);
+			const centre = this.findSlot(half, this.width - half, spacing, placed, slotRandom);
 			if (centre === null) continue;
 			placed.push(centre);
 
-			const solid = Math.random() < blockedRate;
+			const solid = featureRandom() < blockedRate;
 			this.platforms.push({
 				x: centre - half,
 				y,
@@ -134,13 +142,16 @@ export class World {
 
 			// One roll picks spike, rune or nothing, so a platform never carries
 			// both and runes stay exactly half as common as spikes.
-			const roll = Math.random();
+			const roll = featureRandom();
 			if (roll < spikeRate) {
 				this.spikes.push({
-					x: centre - SPIKE_SIZE / 2 + (Math.random() - 0.5) * (PLATFORM_WIDTH - SPIKE_SIZE),
+					x:
+						centre -
+						SPIKE_SIZE / 2 +
+						(featureRandom() - 0.5) * (PLATFORM_WIDTH - SPIKE_SIZE),
 					y: y - SPIKE_SIZE,
 					size: SPIKE_SIZE,
-					phase: Math.random() * Math.PI * 2,
+					phase: featureRandom() * Math.PI * 2,
 					alive: true
 				});
 			} else if (roll < spikeRate + runeRate) {
@@ -150,17 +161,23 @@ export class World {
 					y: runeY,
 					baseY: runeY,
 					size: RUNE_SIZE,
-					phase: Math.random() * Math.PI * 2,
+					phase: featureRandom() * Math.PI * 2,
 					alive: true
 				});
 			}
 		}
 	}
 
-	private findSlot(min: number, max: number, spacing: number, placed: number[]): number | null {
+	private findSlot(
+		min: number,
+		max: number,
+		spacing: number,
+		placed: number[],
+		random: () => number
+	): number | null {
 		if (max <= min) return this.width / 2;
 		for (let attempt = 0; attempt < 20; attempt++) {
-			const candidate = min + Math.random() * (max - min);
+			const candidate = min + random() * (max - min);
 			if (!placed.some((p) => Math.abs(p - candidate) < spacing)) return candidate;
 		}
 		return null;

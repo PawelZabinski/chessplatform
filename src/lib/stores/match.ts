@@ -2,6 +2,7 @@ import { writable, get } from 'svelte/store';
 import { matchClient, type MatchClientStatus } from '$game/multiplayer/MatchClient';
 import {
 	SEATS,
+	type ClimberPose,
 	type GameStart,
 	type MatchConfig,
 	type Seat,
@@ -29,9 +30,7 @@ export interface MatchPlayer {
 	/**
 	 * Palette index assigned by the server.
 	 *
-	 * This was missing while the protocol already carried it, so every reader saw
-	 * undefined: colourFor(undefined) indexed past the end of the palette and the
-	 * rival blew up on `.hue`. Nothing to do with running two windows.
+	 * Assigned randomly and uniquely by the server when the player enters a lobby.
 	 */
 	colour: number;
 }
@@ -45,12 +44,15 @@ export interface MatchState {
 	hostSeat?: Seat;
 	players: MatchPlayer[];
 	config?: MatchConfig;
+	/** Seed shared by every client for identical procedural platforms. */
+	worldSeed?: number;
 	started: boolean;
 	/** Set when the match is over; the play screen reads it and shows the result. */
 	ended?: { winner: Seat | null; reason: string; heights: Record<Seat, number> };
 	/** The game currently on the board. */
 	game?: GameStart;
 	heights: Record<Seat, number>;
+	positions: Partial<Record<Seat, ClimberPose>>;
 	streaks: Record<Seat, number>;
 	/** Last error the server sent, for the lobby to surface. */
 	error?: string;
@@ -74,6 +76,7 @@ const EMPTY: MatchState = {
 	players: [],
 	started: false,
 	heights: zeroed(),
+	positions: {},
 	streaks: zeroed()
 };
 
@@ -119,7 +122,13 @@ function reduce(s: MatchState, message: ServerMessage): MatchState {
 
 		case 'start':
 			log.info('net', 'Match started', { config: message.config });
-			return { ...s, started: true, config: message.config, game: message.firstGame };
+			return {
+				...s,
+				started: true,
+				config: message.config,
+				worldSeed: message.worldSeed,
+				game: message.firstGame
+			};
 
 		case 'gameStart':
 			return { ...s, game: message };
@@ -127,8 +136,12 @@ function reduce(s: MatchState, message: ServerMessage): MatchState {
 		case 'gameEnded':
 			return { ...s, streaks: message.streaks };
 
-		case 'heights':
-			return { ...s, heights: { ...zeroed(), ...message.heights } };
+		case 'positions':
+			return {
+				...s,
+				heights: { ...zeroed(), ...message.heights },
+				positions: message.positions
+			};
 
 		case 'matchEnded':
 			log.info('net', 'Match ended', { winner: message.winner, reason: message.reason });
@@ -147,13 +160,16 @@ function reduce(s: MatchState, message: ServerMessage): MatchState {
 				started: true,
 				seat: message.seat,
 				config: message.config,
+				worldSeed: message.worldSeed,
+				positions: message.positions,
 				heights: message.heights,
 				streaks: message.streaks,
 				game: {
 					t: 'gameStart',
 					gameIndex: message.gameIndex,
 					fen: message.fen,
-					youPlay: message.youPlay
+					youPlay: message.youPlay,
+					shared: message.shared
 				}
 			};
 
@@ -198,8 +214,8 @@ export const matchState = {
 		matchClient.send({ t: 'move', lan, gameIndex, expectedFen });
 	},
 
-	reportHeight(bands: number, gameIndex: number) {
-		matchClient.send({ t: 'height', bands, gameIndex });
+	reportPosition(bands: number, pose: ClimberPose) {
+		matchClient.send({ t: 'position', bands, ...pose });
 	},
 
 	resign() {

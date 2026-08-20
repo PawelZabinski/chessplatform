@@ -1,4 +1,5 @@
 import WebSocket from 'ws';
+import { seededRandom, towerWorldSeed } from '../src/game/worldSeed.ts';
 
 // Never let a missed message hang CI.
 const guard = setTimeout(() => {
@@ -62,6 +63,16 @@ function check(label, actual, expected) {
 	results[label] = ok ? `PASS (${JSON.stringify(actual)})` : `FAIL got ${JSON.stringify(actual)} want ${JSON.stringify(expected)}`;
 }
 
+const seedA = seededRandom(12345, 7);
+const seedB = seededRandom(12345, 7);
+check(
+	'seeded streams reproduce layouts',
+	[seedA(), seedA(), seedA()],
+	[seedB(), seedB(), seedB()]
+);
+check('tower floor seed survives restart', towerWorldSeed(12), towerWorldSeed(12));
+check('different tower floors use different seeds', towerWorldSeed(12) === towerWorldSeed(13), false);
+
 const a = client('A');
 const b = client('B');
 await a.open();
@@ -119,6 +130,8 @@ const startB = await b.next((m) => m.t === 'start');
 check('A plays white first game', startA.firstGame.youPlay, 'w');
 check('B plays black first game', startB.firstGame.youPlay, 'b');
 check('game index 0', startA.firstGame.gameIndex, 0);
+check('world seed is an integer', Number.isInteger(startA.worldSeed), true);
+check('both players share world seed', startB.worldSeed, startA.worldSeed);
 
 // 7. Cooldown is enforced server-side: two moves in a row without waiting.
 a.send({ t: 'move', lan: 'e2e4', gameIndex: 0, expectedFen: startA.firstGame.fen });
@@ -159,10 +172,23 @@ a.send({ t: 'move', lan: 'd2d4', gameIndex: 99, expectedFen: blackTwice.fen });
 const staleGame = await a.next((m) => m.t === 'error' && m.message.includes('already finished'));
 check('stale game index rejected', staleGame.code, 'badMove');
 
-// 11. Height is clamped, not trusted.
-a.send({ t: 'height', bands: 100000, gameIndex: 0 });
-const heights = await a.next((m) => m.t === 'heights');
-check('forged height clamped', heights.heights.a <= 40, true);
+// 11. Visual pose is relayed, while victory height remains clamped and trusted.
+a.send({
+	t: 'position',
+	bands: 100000,
+	x: 0.2,
+	y: 333,
+	vx: 0.15,
+	vy: -440,
+	facing: -1,
+	anim: 'jump'
+});
+const positions = await a.next((m) => m.t === 'positions');
+check('forged height clamped', positions.heights.a <= 40, true);
+check('horizontal pose relayed', positions.positions.a.x, 0.2);
+check('vertical pose relayed', positions.positions.a.y, 333);
+check('velocity relayed for prediction', positions.positions.a.vy, -440);
+check('animation pose relayed', `${positions.positions.a.facing}:${positions.positions.a.anim}`, '-1:jump');
 
 // 12. Checkmate ends the game, flings the winner and deals a handicapped one.
 //     Fool's mate, played by whoever can: reset to a fresh room for clarity.
@@ -230,7 +256,11 @@ const cfg5 = await host5.next((m) => m.t === 'lobby' && m.config.maxPlayers === 
 check('room admits five', cfg5.config.maxPlayers, 5);
 check('duel refused above two', cfg5.config.chessMode, 'solo');
 check('shuffled opening kept', cfg5.config.opening, 'random');
-check('host has a colour', cfg5.players[0].colour, 0);
+check(
+	'host has a valid random colour',
+	Number.isInteger(cfg5.players[0].colour) && cfg5.players[0].colour >= 0 && cfg5.players[0].colour < 5,
+	true
+);
 
 for (let i = 1; i < 5; i++) {
 	const p = client('P' + i);
@@ -253,14 +283,27 @@ sixth.ws.close();
 host5.send({ t: 'ready', ready: true });
 for (const p of room5) p.send({ t: 'ready', ready: true });
 const start5 = await host5.next((m) => m.t === 'start');
+const startP1 = await room5[0].next((m) => m.t === 'start');
 check('race starts with five', start5.firstGame.shared, false);
 check('race deals white to everyone', start5.firstGame.youPlay, 'w');
 check('shuffled position is not the standard array', start5.firstGame.fen.startsWith('rnbqkbnr'), false);
+check('race shares one world seed', startP1.worldSeed, start5.worldSeed);
 
-// 16. Heights from every seat reach everyone, and the race is winnable by height.
-room5[0].send({ t: 'height', bands: 5, gameIndex: 0 });
-const h = await host5.next((m) => m.t === 'heights' && m.heights.b > 0);
+// 16. Predicted poses from every seat reach everyone, and the race is winnable by height.
+room5[0].send({
+	t: 'position',
+	bands: 5,
+	x: 0.75,
+	y: 950,
+	vx: -0.2,
+	vy: 120,
+	facing: -1,
+	anim: 'run'
+});
+const h = await host5.next((m) => m.t === 'positions' && m.heights.b > 0);
 check('rival height broadcast', h.heights.b, 5);
+check('rival live position broadcast', h.positions.b.x, 0.75);
+check('rival prediction velocity broadcast', h.positions.b.vx, -0.2);
 
 // 17. Moves are ignored in a race: the chess is local.
 room5[0].send({ t: 'move', lan: 'e2e4', gameIndex: 0, expectedFen: start5.firstGame.fen });

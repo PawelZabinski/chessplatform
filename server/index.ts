@@ -180,8 +180,8 @@ function handle(socket: WebSocket, message: ClientMessage) {
 			return;
 		}
 
-		case 'height': {
-			dispatch(room, room.match.reportHeight(seat, message.bands));
+		case 'position': {
+			dispatch(room, room.match.reportPosition(seat, message.bands, message));
 			return;
 		}
 

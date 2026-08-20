@@ -18,19 +18,19 @@ export interface RenderState {
 	slowMotion: boolean;
 	/** Rival climbers in a race, drawn as coloured ghosts. */
 	rivals?: RivalClimber[];
-	/** Hue rotation for the local climber, so you are your colour as well. */
-	playerHue?: number;
+	/** Headband colour for the local climber, assigned in the lobby. */
+	playerColour?: string;
 }
 
 /** Another player's climber, as last reported. */
 export interface RivalClimber {
 	name: string;
-	/** Hue rotation applied to the sprite, from the shared palette. */
-	hue: number;
 	css: string;
 	/** World position, already smoothed by the caller. */
 	x: number;
 	y: number;
+	facing: 1 | -1;
+	anim: 'idle' | 'run' | 'jump' | 'double';
 }
 
 /**
@@ -72,10 +72,6 @@ export function renderWorld(
 	// The climber, interpolated between fixed steps so motion stays smooth.
 	const px = player.prevX + (player.x - player.prevX) * alpha;
 	const py = player.prevY + (player.y - player.prevY) * alpha;
-	if (state.playerHue) {
-		ctx.save();
-		ctx.filter = `hue-rotate(${state.playerHue}deg)`;
-	}
 	sprites.draw(
 		ctx,
 		player.anim,
@@ -84,9 +80,9 @@ export function renderWorld(
 		toScreenY(py),
 		player.width,
 		player.height,
-		player.facing
+		player.facing,
+		state.playerColour
 	);
-	if (state.playerHue) ctx.restore();
 
 	drawLava(ctx, width, height, lava, toScreenY, state.simTime, alpha);
 	if (state.danger > 0) drawDangerVignette(ctx, width, height, state.danger);
@@ -271,8 +267,8 @@ function drawHazards(
 /**
  * Other players' climbers.
  *
- * Each is the same sprite under a hue rotation, at reduced opacity so it reads
- * as somebody else's climber rather than a second one of yours. A rival who has
+ * Each keeps the authored green body but wears its lobby colour as a headband,
+ * at reduced opacity so it reads as somebody else's climber. A rival who has
  * climbed off the top of the view is pinned to the edge with an arrow instead of
  * being dropped — knowing how far ahead somebody is *is* the race, and a rival
  * you cannot see is exactly the one you most want to know about.
@@ -310,11 +306,17 @@ function drawRivals(
 			ctx.textAlign = 'center';
 			ctx.fillText(rival.name, x, offTop ? y + 16 : y - 10);
 		} else {
-			// The sprite sheet is a single green frog; rotating its hue is what
-			// makes five distinguishable climbers out of one piece of art.
-			if (rival.hue) ctx.filter = `hue-rotate(${rival.hue}deg)`;
-			sprites.draw(ctx, 'idle', state.simTime, rival.x, screenY, 34, 44, 1);
-			ctx.filter = 'none';
+			sprites.draw(
+				ctx,
+				rival.anim,
+				state.simTime,
+				rival.x,
+				screenY,
+				34,
+				44,
+				rival.facing,
+				rival.css
+			);
 
 			ctx.font = '10px system-ui, sans-serif';
 			ctx.textAlign = 'center';

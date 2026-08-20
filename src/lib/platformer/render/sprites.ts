@@ -36,6 +36,7 @@ const SPIKE_SHEET = { src: '/assets/Spike.png', frames: 4, fps: 6, w: 54, h: 52 
 
 export class NinjaSprites {
 	private sheets = new Map<PlayerAnim, Sheet>();
+	private headbandSheets = new Map<string, HTMLCanvasElement>();
 	private spike?: HTMLImageElement;
 	ready = false;
 
@@ -97,7 +98,8 @@ export class NinjaSprites {
 		y: number,
 		width: number,
 		height: number,
-		facing: 1 | -1
+		facing: 1 | -1,
+		headband?: string
 	) {
 		const sheet = this.sheets.get(anim);
 
@@ -117,8 +119,9 @@ export class NinjaSprites {
 
 		if (sheet) {
 			const frame = Math.floor((animTimeMs / 1000) * sheet.fps) % sheet.frames;
+			const image = headband ? this.withHeadband(anim, sheet.image, headband) : sheet.image;
 			ctx.drawImage(
-				sheet.image,
+				image,
 				frame * FRAME_SIZE,
 				0,
 				FRAME_SIZE,
@@ -135,4 +138,58 @@ export class NinjaSprites {
 
 		ctx.restore();
 	}
+
+	/**
+	 * Recolours the authored red headband pixels once and caches the whole sheet.
+	 * Restricting the mask to the top of each frame leaves the frog's green skin,
+	 * eyes, clothes and any warm pixels elsewhere completely untouched.
+	 */
+	private withHeadband(anim: PlayerAnim, source: HTMLImageElement, colour: string) {
+		const key = `${anim}:${colour}`;
+		const cached = this.headbandSheets.get(key);
+		if (cached) return cached;
+
+		const canvas = document.createElement('canvas');
+		canvas.width = source.naturalWidth;
+		canvas.height = source.naturalHeight;
+		const ctx = canvas.getContext('2d', { willReadFrequently: true });
+		if (!ctx) return source;
+		ctx.drawImage(source, 0, 0);
+
+		const target = parseHexColour(colour);
+		if (!target) return source;
+		try {
+			const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height);
+			for (let y = 0; y < canvas.height; y++) {
+				// Headband and its tails occupy the upper thirteen source pixels.
+				if (y > 12) continue;
+				for (let x = 0; x < canvas.width; x++) {
+					const i = (y * canvas.width + x) * 4;
+					const red = pixels.data[i];
+					const green = pixels.data[i + 1];
+					const blue = pixels.data[i + 2];
+					if (pixels.data[i + 3] === 0 || red < 70 || red < green * 1.35 || red < blue * 1.15)
+						continue;
+
+					const shade = Math.max(0.28, red / 255);
+					pixels.data[i] = Math.round(target[0] * shade);
+					pixels.data[i + 1] = Math.round(target[1] * shade);
+					pixels.data[i + 2] = Math.round(target[2] * shade);
+				}
+			}
+			ctx.putImageData(pixels, 0, 0);
+			this.headbandSheets.set(key, canvas);
+			return canvas;
+		} catch {
+			// A browser refusing pixel access should cost colour, never the sprite.
+			return source;
+		}
+	}
+}
+
+function parseHexColour(colour: string): [number, number, number] | null {
+	const match = /^#([0-9a-f]{6})$/i.exec(colour);
+	if (!match) return null;
+	const value = Number.parseInt(match[1], 16);
+	return [(value >> 16) & 255, (value >> 8) & 255, value & 255];
 }

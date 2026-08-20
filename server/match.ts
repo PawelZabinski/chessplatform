@@ -4,12 +4,14 @@ import {
 	DEFAULT_MATCH_CONFIG,
 	MAX_PLAYERS,
 	SEATS,
+	type ClimberPose,
 	type GameStart,
 	type MatchConfig,
 	type Seat,
 	type ServerMessage
 } from '../src/game/multiplayer/protocol.ts';
 import { randomBackRankFen } from '../src/game/multiplayer/openings.ts';
+import { randomWorldSeed } from '../src/game/worldSeed.ts';
 
 /**
  * A match, and every rule that decides one.
@@ -41,6 +43,8 @@ export interface Player {
 	connected: boolean;
 	/** Index into the climber palette, so every rival is a different colour. */
 	colour: number;
+	/** Latest visual pose; advisory and never used to decide the winner. */
+	pose: ClimberPose;
 }
 
 export type Outbound = { to: Seat | 'all'; message: ServerMessage };
@@ -48,15 +52,16 @@ export type Outbound = { to: Seat | 'all'; message: ServerMessage };
 /**
  * The largest height jump a single report may claim.
  *
- * Height is reported by the client roughly five times a second, and the fastest
+ * Height is reported by the client roughly ten times a second, and the fastest
  * legitimate ascent is the victory fling. Anything beyond this in one step is
  * either a stall-then-catch-up or a forged report; clamping costs an honest
  * client nothing because the next report lands 200ms later.
  */
-const MAX_HEIGHT_STEP = 40;
+const MAX_HEIGHT_STEP = 10;
 
 export class Match {
 	readonly code: string;
+	readonly worldSeed = randomWorldSeed();
 	readonly players = new Map<Seat, Player>();
 	config: MatchConfig = { ...DEFAULT_MATCH_CONFIG };
 	hostSeat: Seat = 'a';
@@ -100,6 +105,12 @@ export class Match {
 		const seat = SEATS.slice(0, this.config.maxPlayers).find((s) => !this.players.has(s));
 		if (!seat) return null;
 
+		const usedColours = new Set([...this.players.values()].map((player) => player.colour));
+		const availableColours = SEATS.map((_, index) => index).filter(
+			(index) => !usedColours.has(index)
+		);
+		const colour = availableColours[randomWorldSeed() % availableColours.length] ?? 0;
+
 		this.players.set(seat, {
 			seat,
 			displayName: displayName.slice(0, 18) || `Climber ${seat.toUpperCase()}`,
@@ -109,7 +120,8 @@ export class Match {
 			losses: 0,
 			nextMoveAt: 0,
 			connected: true,
-			colour: SEATS.indexOf(seat)
+			colour,
+			pose: { x: 0.5, y: 48, vx: 0, vy: 0, facing: 1, anim: 'idle' }
 		});
 
 		if (this.players.size === 1) this.hostSeat = seat;
@@ -194,7 +206,12 @@ export class Match {
 		for (const seat of this.seats) {
 			out.push({
 				to: seat,
-				message: { t: 'start', config: this.config, firstGame: this.gameStartFor(seat, first) }
+				message: {
+					t: 'start',
+					config: this.config,
+					worldSeed: this.worldSeed,
+					firstGame: this.gameStartFor(seat, first)
+				}
 			});
 		}
 		return out;
@@ -522,17 +539,28 @@ export class Match {
 		return out;
 	}
 
-	// ── Height and match end ───────────────────────────────────────────────
+	// ── Climber position and match end ─────────────────────────────────────
 
-	reportHeight(seat: Seat, bands: number): Outbound[] {
+	reportPosition(seat: Seat, bands: number, pose: ClimberPose): Outbound[] {
 		const player = this.players.get(seat);
 		if (!player || this.ended || !this.started) return [];
 
 		const claimed = Number.isFinite(bands) ? Math.max(0, Math.floor(bands)) : 0;
 		player.height = Math.min(claimed, player.height + MAX_HEIGHT_STEP);
+		player.pose = {
+			x: clamp(finiteOr(pose.x, 0.5), 0, 1),
+			y: clamp(finiteOr(pose.y, 48), -200, this.config.targetHeight * 250 + 2000),
+			vx: clamp(finiteOr(pose.vx, 0), -4, 4),
+			vy: clamp(finiteOr(pose.vy, 0), -3000, 3000),
+			facing: pose.facing === -1 ? -1 : 1,
+			anim: ['idle', 'run', 'jump', 'double'].includes(pose.anim) ? pose.anim : 'idle'
+		};
 
 		const out: Outbound[] = [
-			{ to: 'all', message: { t: 'heights', heights: this.heights() } }
+			{
+				to: 'all',
+				message: { t: 'positions', positions: this.positions(), heights: this.heights() }
+			}
 		];
 
 		if (player.height >= this.config.targetHeight) {
@@ -557,13 +585,22 @@ export class Match {
 		return {
 			t: 'snapshot',
 			config: this.config,
+			worldSeed: this.worldSeed,
 			seat,
 			gameIndex: this.gameIndex,
 			fen: this.chess.fen(),
 			youPlay: this.colours[seat],
+			shared: this.isShared,
+			positions: this.positions(),
 			heights: this.heights(),
 			streaks: this.streaks()
 		};
+	}
+
+	private positions(): Partial<Record<Seat, ClimberPose>> {
+		const out: Partial<Record<Seat, ClimberPose>> = {};
+		for (const [seat, player] of this.players) out[seat] = player.pose;
+		return out;
 	}
 
 	private heights(): Record<Seat, number> {
@@ -582,4 +619,8 @@ export class Match {
 function clamp(value: number, min: number, max: number) {
 	if (!Number.isFinite(value)) return min;
 	return Math.min(max, Math.max(min, value));
+}
+
+function finiteOr(value: number, fallback: number) {
+	return Number.isFinite(value) ? value : fallback;
 }

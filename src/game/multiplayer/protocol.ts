@@ -77,11 +77,11 @@
  * height is trivially forged.
  *
  * The platformer is deliberately NOT lockstep-simulated across clients. Each
- * client simulates its own climber locally and reports its height on a timer
- * (HeightReport, ~5/sec). The server keeps the canonical height for win checks;
- * the opponent's climber is drawn as a smoothed ghost. Physics divergence
- * between clients therefore does not desync the match — only chess does, and
- * chess is turn-based and cheap to validate server-side.
+ * client simulates its own climber locally and reports its pose on a timer
+ * (PositionReport, ~10/sec). The server keeps the canonical height for win checks;
+ * the opponent's climber is drawn from the latest normalized pose. Physics
+ * divergence between clients therefore does not desync the match — only chess
+ * does, and chess is turn-based and cheap to validate server-side.
  *
  * Reconnection: MatchSnapshot carries everything needed to rebuild a client
  * mid-match, so a dropped socket resumes rather than forfeits.
@@ -94,6 +94,22 @@
 export const SEATS = ['a', 'b', 'c', 'd', 'e'] as const;
 export type Seat = (typeof SEATS)[number];
 export const MAX_PLAYERS = SEATS.length;
+
+export type ClimberAnim = 'idle' | 'run' | 'jump' | 'double';
+
+/** Viewport-independent pose shared between climbers. */
+export interface ClimberPose {
+	/** Horizontal position from 0 (left edge) to 1 (right edge). */
+	x: number;
+	/** Pixels the sprite's top has climbed above the starting ground. */
+	y: number;
+	/** Horizontal viewport-widths per second, used for client-side prediction. */
+	vx: number;
+	/** Vertical world pixels per second, used for client-side prediction. */
+	vy: number;
+	facing: 1 | -1;
+	anim: ClimberAnim;
+}
 
 /**
  * How the chess is played in a match.
@@ -207,18 +223,17 @@ export interface MoveIntent {
 	expectedFen: string;
 }
 
-/** Periodic, low-frequency height report. Advisory: the server clamps it. */
-export interface HeightReport {
-	t: 'height';
+/** Frequent visual pose report. Only `bands` influences match results. */
+export interface PositionReport extends ClimberPose {
+	t: 'position';
 	bands: number;
-	gameIndex: number;
 }
 
 export interface Resign {
 	t: 'resign';
 }
 
-export type ClientMessage = JoinLobby | SetConfig | Ready | MoveIntent | HeightReport | Resign;
+export type ClientMessage = JoinLobby | SetConfig | Ready | MoveIntent | PositionReport | Resign;
 
 // ── Server → client ─────────────────────────────────────────────────────────
 
@@ -234,6 +249,8 @@ export interface LobbyState {
 export interface MatchStart {
 	t: 'start';
 	config: MatchConfig;
+	/** Every client generates the same platform and hazard layout from this seed. */
+	worldSeed: number;
 	firstGame: GameStart;
 }
 
@@ -273,9 +290,10 @@ export interface GameEnded {
 	streaks: Record<Seat, number>;
 }
 
-/** Opponent height for the ghost climber. Sent at the report cadence. */
-export interface HeightUpdate {
-	t: 'heights';
+/** Live poses and server-clamped progress for every climber. */
+export interface PositionUpdate {
+	t: 'positions';
+	positions: Partial<Record<Seat, ClimberPose>>;
 	heights: Record<Seat, number>;
 }
 
@@ -290,10 +308,13 @@ export interface MatchEnded {
 export interface MatchSnapshot {
 	t: 'snapshot';
 	config: MatchConfig;
+	worldSeed: number;
 	seat: Seat;
 	gameIndex: number;
 	fen: string;
 	youPlay: 'w' | 'b';
+	shared: boolean;
+	positions: Partial<Record<Seat, ClimberPose>>;
 	heights: Record<Seat, number>;
 	streaks: Record<Seat, number>;
 }
@@ -314,7 +335,7 @@ export type ServerMessage =
 	| GameStart
 	| MoveApplied
 	| GameEnded
-	| HeightUpdate
+	| PositionUpdate
 	| MatchEnded
 	| MatchSnapshot
 	| ServerError;

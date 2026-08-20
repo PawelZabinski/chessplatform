@@ -15,6 +15,7 @@
 	import { chessState } from '$lib/stores/chess';
 	import { matchState, onMatchEvent } from '$lib/stores/match';
 	import { colourFor } from '$game/multiplayer/palette';
+	import type { ClimberPose } from '$game/multiplayer/protocol';
 	import { goto } from '$lib/stores/app';
 	import { log } from '$lib/diagnostics';
 
@@ -57,8 +58,10 @@
 			clearSpikesRequested: () => {},
 			setBoardSlowMotion: (active: boolean) => board?.setSlowMotion(active),
 			// Only a match cares where we are; single player has nobody to tell.
-			reportHeight:
-				mode === 'match' ? (bands: number) => matchState.reportHeight(bands, 0) : undefined
+			reportPosition:
+				mode === 'match'
+					? (bands: number, pose: ClimberPose) => matchState.reportPosition(bands, pose)
+					: undefined
 		};
 	}
 
@@ -71,8 +74,8 @@
 	 * which is exactly what it looked like.
 	 *
 	 * Two quite different jobs, depending on the format. In a race everybody
-	 * plays the engine and all that is shared is height, so the only wiring is
-	 * rivals in and heights out. In a duel the board itself is shared: the local
+	 * plays the engine and all that is shared is the climb, so the wiring is
+	 * predicted rival poses in and local poses out. In a duel the board itself is shared: the local
 	 * engine is removed entirely, our moves become intents, and the server's
 	 * MoveApplied is what actually moves the pieces.
 	 */
@@ -86,12 +89,15 @@
 		const seat = state.seat;
 		const shared = state.game.shared === true;
 
+		// game.start() creates the board before match wiring is attached. Replace its
+		// default position with the opening the server actually dealt.
+		board?.loadPosition({ fen: state.game.fen });
 		if (shared && seat) board?.setRealTime(state.game.youPlay);
 
 		// Our own frog wears our seat's colour, so "everyone is a different
 		// colour" is true of the climber you are actually looking at as well.
 		const me = state.players.find((p) => p.seat === seat);
-		if (me) game?.setPlayerColour(colourFor(me.colour).hue);
+		if (me) game?.setPlayerColour(colourFor(me.colour).css);
 
 		// Everyone already in the room, drawn from the first frame rather than
 		// waiting for their first height report.
@@ -99,7 +105,7 @@
 
 		const off = onMatchEvent((message) => {
 			switch (message.t) {
-				case 'heights':
+				case 'positions':
 					syncRivals();
 					break;
 
@@ -151,20 +157,26 @@
 		};
 	}
 
-	/** Mirrors every other player's reported height into the climb. */
+	/** Mirrors every other player's reported and predicted pose into the climb. */
 	function syncRivals() {
 		const state = matchState.current;
 		if (!game) return;
 		for (const player of state.players) {
 			if (player.seat === state.seat) continue;
 			const palette = colourFor(player.colour);
+			const pose: ClimberPose = state.positions[player.seat] ?? {
+				x: 0.5,
+				y: 48,
+				vx: 0,
+				vy: 0,
+				facing: 1,
+				anim: 'idle'
+			};
 			game.setRival(
 				player.seat,
 				player.displayName,
-				palette.hue,
 				palette.css,
-				state.heights[player.seat] ?? 0,
-				player.colour
+				pose
 			);
 		}
 	}
@@ -192,7 +204,11 @@
 	onMount(async () => {
 		touch = isTouchDevice();
 		game = new PlatformerGame(stage, makeCallbacks());
-		await game.start({ mode, floor });
+		await game.start({
+			mode,
+			floor,
+			seed: mode === 'match' ? matchState.current.worldSeed : undefined
+		});
 		if (mode === 'match') stopMatch = connectMatch();
 	});
 
