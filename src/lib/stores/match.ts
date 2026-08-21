@@ -54,6 +54,7 @@ export interface MatchState {
 	heights: Record<Seat, number>;
 	positions: Partial<Record<Seat, ClimberPose>>;
 	streaks: Record<Seat, number>;
+	endRunVote?: { requestedBy: Seat; acceptedBy: Seat[] };
 	/** Last error the server sent, for the lobby to surface. */
 	error?: string;
 }
@@ -127,7 +128,8 @@ function reduce(s: MatchState, message: ServerMessage): MatchState {
 				started: true,
 				config: message.config,
 				worldSeed: message.worldSeed,
-				game: message.firstGame
+				game: message.firstGame,
+				endRunVote: undefined
 			};
 
 		case 'gameStart':
@@ -143,6 +145,14 @@ function reduce(s: MatchState, message: ServerMessage): MatchState {
 				positions: message.positions
 			};
 
+		case 'endRunVote':
+			return {
+				...s,
+				endRunVote: message.requestedBy
+					? { requestedBy: message.requestedBy, acceptedBy: message.acceptedBy }
+					: undefined
+			};
+
 		case 'matchEnded':
 			log.info('net', 'Match ended', { winner: message.winner, reason: message.reason });
 			return {
@@ -151,7 +161,8 @@ function reduce(s: MatchState, message: ServerMessage): MatchState {
 					winner: message.winner,
 					reason: message.reason,
 					heights: message.finalHeights
-				}
+				},
+				endRunVote: undefined
 			};
 
 		case 'snapshot':
@@ -220,6 +231,14 @@ export const matchState = {
 
 	resign() {
 		matchClient.send({ t: 'resign' });
+	},
+
+	requestEndRun() {
+		matchClient.send({ t: 'requestEndRun' });
+	},
+
+	respondEndRun(accept: boolean) {
+		matchClient.send({ t: 'respondEndRun', accept });
 	},
 
 	leave() {

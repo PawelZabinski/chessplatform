@@ -66,7 +66,8 @@
  *     all the way to the top of the tower — an instant win. This is the comeback
  *     stopper: the handicap ladder makes losing survivable, and back-to-back
  *     wins are how a genuinely stronger player closes the match out.
- *  c. A player disconnects or resigns.
+ *  c. Every player agrees to end the run through the in-game vote.
+ *  d. A player disconnects or explicitly resigns.
  *
  * ─────────────────────────────────────────────────────────────────────────────
  * ARCHITECTURE
@@ -233,7 +234,26 @@ export interface Resign {
 	t: 'resign';
 }
 
-export type ClientMessage = JoinLobby | SetConfig | Ready | MoveIntent | PositionReport | Resign;
+/** Opens a unanimous vote to stop the run without declaring a loser. */
+export interface RequestEndRun {
+	t: 'requestEndRun';
+}
+
+/** Accepts the current vote, or rejects/cancels it for everyone. */
+export interface RespondEndRun {
+	t: 'respondEndRun';
+	accept: boolean;
+}
+
+export type ClientMessage =
+	| JoinLobby
+	| SetConfig
+	| Ready
+	| MoveIntent
+	| PositionReport
+	| Resign
+	| RequestEndRun
+	| RespondEndRun;
 
 // ── Server → client ─────────────────────────────────────────────────────────
 
@@ -301,10 +321,17 @@ export interface PositionUpdate {
 	heights: Record<Seat, number>;
 }
 
+/** Current unanimous vote to stop the run; null means play continues normally. */
+export interface EndRunVote {
+	t: 'endRunVote';
+	requestedBy: Seat | null;
+	acceptedBy: Seat[];
+}
+
 export interface MatchEnded {
 	t: 'matchEnded';
 	winner: Seat | null;
-	reason: 'reachedTop' | 'winStreak' | 'resigned' | 'disconnected';
+	reason: 'reachedTop' | 'winStreak' | 'resigned' | 'disconnected' | 'agreed';
 	finalHeights: Record<Seat, number>;
 }
 
@@ -340,6 +367,7 @@ export type ServerMessage =
 	| MoveApplied
 	| GameEnded
 	| PositionUpdate
+	| EndRunVote
 	| MatchEnded
 	| MatchSnapshot
 	| ServerError;

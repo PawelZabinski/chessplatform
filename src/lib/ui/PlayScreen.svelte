@@ -33,6 +33,13 @@
 	let touch = false;
 	let stopMatch: (() => void) | null = null;
 	let cooldownTimer: ReturnType<typeof setTimeout> | undefined;
+	let endRunVote: {
+		requestedByMe: boolean;
+		requesterName: string;
+		acceptedByMe: boolean;
+		acceptedCount: number;
+		total: number;
+	} | null = null;
 
 	/**
 	 * The two halves talk only through this object.
@@ -154,14 +161,20 @@
 					game?.matchGameDealt();
 					break;
 
+				case 'gameEnded':
+					game?.matchGameEnded(message.winner === seat, message.reason);
+					break;
+
 				case 'matchEnded':
 					game?.matchOver(
-						message.winner === seat
+						message.reason === 'agreed'
+							? 'The run ended by agreement.'
+							: message.winner === seat
 							? 'You reached the crown first.'
 							: message.winner
 								? 'A rival reached the crown first.'
 								: 'The match ended.',
-						message.winner === seat ? 1 : 0
+						message.winner === seat ? 1 : message.winner ? 0 : 0.5
 					);
 					break;
 			}
@@ -236,8 +249,28 @@
 	});
 
 	function leave() {
-		if (mode === 'match') matchState.resign();
+		if (mode === 'match') {
+			matchState.requestEndRun();
+			return;
+		}
 		game?.leave(chessState.moveCount());
+	}
+
+	$: {
+		const vote = mode === 'match' ? $matchState.endRunVote : undefined;
+		const seat = $matchState.seat;
+		if (vote && seat) {
+			const requester = $matchState.players.find((player) => player.seat === vote.requestedBy);
+			endRunVote = {
+				requestedByMe: vote.requestedBy === seat,
+				requesterName: requester?.displayName ?? 'Another player',
+				acceptedByMe: vote.acceptedBy.includes(seat),
+				acceptedCount: vote.acceptedBy.length,
+				total: $matchState.players.length
+			};
+		} else {
+			endRunVote = null;
+		}
 	}
 
 	// A match that ends while the lobby is gone still has to go somewhere.
@@ -261,7 +294,16 @@
 		{#if touch}
 			<TouchControls input={game?.inputHandle ?? null} {hud} />
 		{/if}
-		<Hud {hud} {toasts} {banner} {touch} onLeave={leave} />
+		<Hud
+			{hud}
+			{toasts}
+			{banner}
+			{touch}
+			{endRunVote}
+			onLeave={leave}
+			onAcceptEndRun={() => matchState.respondEndRun(true)}
+			onDeclineEndRun={() => matchState.respondEndRun(false)}
+		/>
 	</section>
 
 	<section class="board-side mv-backdrop" aria-label="The board">

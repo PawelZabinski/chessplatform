@@ -6,6 +6,15 @@
 	export let toasts: Toast[] = [];
 	export let banner: Banner | null = null;
 	export let onLeave: () => void;
+	export let endRunVote: {
+		requestedByMe: boolean;
+		requesterName: string;
+		acceptedByMe: boolean;
+		acceptedCount: number;
+		total: number;
+	} | null = null;
+	export let onAcceptEndRun: () => void = () => {};
+	export let onDeclineEndRun: () => void = () => {};
 	/** On touch the slow-motion orb carries its own charge meter and prompt. */
 	export let touch = false;
 
@@ -43,10 +52,28 @@
 			</div>
 		{/if}
 
-		<button class="leave" type="button" on:click={onLeave}>
+		<button class="leave" type="button" on:click={onLeave} disabled={endRunVote !== null}>
 			{hud?.floorLabel ? 'Leave Floor' : 'End Run'}
 		</button>
 	</div>
+
+	{#if endRunVote}
+		<div class="end-vote" role="region" aria-label="End run confirmation">
+			<span>
+				{#if endRunVote.requestedByMe}
+					End run requested — waiting for {endRunVote.total - endRunVote.acceptedCount} more
+				{:else}
+					<strong>{endRunVote.requesterName}</strong> would like to end the run
+				{/if}
+			</span>
+			{#if endRunVote.requestedByMe || endRunVote.acceptedByMe}
+				<button class="vote-button quiet" type="button" on:click={onDeclineEndRun}>Cancel</button>
+			{:else}
+				<button class="vote-button quiet" type="button" on:click={onDeclineEndRun}>Keep playing</button>
+				<button class="vote-button agree" type="button" on:click={onAcceptEndRun}>End run</button>
+			{/if}
+		</div>
+	{/if}
 
 	<div class="meters">
 		{#if (hud?.combo ?? 1) > 1}
@@ -237,6 +264,46 @@
 	.leave:hover {
 		background: var(--crimson-light);
 		color: var(--gold-bright);
+	}
+
+	.leave:disabled {
+		opacity: 0.55;
+		cursor: default;
+	}
+
+	.end-vote {
+		pointer-events: auto;
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		max-width: min(720px, calc(100% - 20px));
+		padding: 7px 10px;
+		background: rgba(35, 27, 20, 0.92);
+		border: 1px solid rgba(201, 162, 39, 0.75);
+		box-shadow: 0 8px 20px -14px #000;
+		color: var(--parchment);
+		font-size: 12px;
+	}
+
+	.end-vote span {
+		flex: 1 1 auto;
+	}
+
+	.vote-button {
+		padding: 5px 9px;
+		border: 1px solid var(--gold);
+		font: inherit;
+		color: var(--parchment);
+		cursor: pointer;
+		white-space: nowrap;
+	}
+
+	.vote-button.quiet {
+		background: transparent;
+	}
+
+	.vote-button.agree {
+		background: var(--crimson);
 	}
 
 	.meters {

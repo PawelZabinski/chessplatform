@@ -73,6 +73,8 @@ export class Match {
 	private chess = new Chess();
 	/** Which colour each seat plays in the current game. */
 	private colours: Record<Seat, 'w' | 'b'> = { a: 'w', b: 'b', c: 'w', d: 'w', e: 'w' };
+	private endRunRequestedBy: Seat | null = null;
+	private endRunAccepted = new Set<Seat>();
 
 	constructor(code: string) {
 		this.code = code;
@@ -447,6 +449,17 @@ export class Match {
 
 	/** Result of the game just played, from the point of view of the mover. */
 	private detectGameEnd(mover: 'w' | 'b'): { winner: 'mover' | null; reason: string } | null {
+		// Real-time chess lets the attacking side act again while the defender is
+		// in check. chess.js consequently permits capturing the checked king, but
+		// its ordinary mate predicates are no longer meaningful once that king is
+		// absent. Treat the capture as the same decisive win as checkmate before
+		// asking any of those predicates.
+		const placement = this.chess.fen().split(' ')[0];
+		const opposingKing = mover === 'w' ? 'k' : 'K';
+		if (!placement.includes(opposingKing)) {
+			return { winner: 'mover', reason: 'king captured' };
+		}
+
 		// Ask the question of the side that did NOT just move: can they reply?
 		const parts = this.chess.fen().split(' ');
 		const opponent = mover === 'w' ? 'b' : 'w';
@@ -543,6 +556,51 @@ export class Match {
 
 	// ── Climber position and match end ─────────────────────────────────────
 
+	requestEndRun(seat: Seat): Outbound[] {
+		if (!this.players.has(seat) || !this.started || this.ended) return [];
+
+		if (!this.endRunRequestedBy) {
+			this.endRunRequestedBy = seat;
+			this.endRunAccepted = new Set([seat]);
+		} else {
+			// Clicking End Run while somebody else is already asking is an
+			// acceptance, which keeps simultaneous clicks intuitive.
+			this.endRunAccepted.add(seat);
+		}
+
+		return this.finishOrBroadcastEndRunVote();
+	}
+
+	respondEndRun(seat: Seat, accept: boolean): Outbound[] {
+		if (!this.endRunRequestedBy || !this.players.has(seat) || this.ended) return [];
+
+		if (!accept) {
+			this.endRunRequestedBy = null;
+			this.endRunAccepted.clear();
+			return [this.endRunVoteMessage()];
+		}
+
+		this.endRunAccepted.add(seat);
+		return this.finishOrBroadcastEndRunVote();
+	}
+
+	private finishOrBroadcastEndRunVote(): Outbound[] {
+		const unanimous = this.seats.every((seat) => this.endRunAccepted.has(seat));
+		if (unanimous) return this.endMatch(null, 'agreed');
+		return [this.endRunVoteMessage()];
+	}
+
+	private endRunVoteMessage(): Outbound {
+		return {
+			to: 'all',
+			message: {
+				t: 'endRunVote',
+				requestedBy: this.endRunRequestedBy,
+				acceptedBy: [...this.endRunAccepted]
+			}
+		};
+	}
+
 	reportPosition(seat: Seat, bands: number, pose: ClimberPose): Outbound[] {
 		const player = this.players.get(seat);
 		if (!player || this.ended || !this.started) return [];
@@ -571,9 +629,14 @@ export class Match {
 		return out;
 	}
 
-	endMatch(winner: Seat | null, reason: 'reachedTop' | 'winStreak' | 'resigned' | 'disconnected'): Outbound[] {
+	endMatch(
+		winner: Seat | null,
+		reason: 'reachedTop' | 'winStreak' | 'resigned' | 'disconnected' | 'agreed'
+	): Outbound[] {
 		if (this.ended) return [];
 		this.ended = true;
+		this.endRunRequestedBy = null;
+		this.endRunAccepted.clear();
 		return [
 			{
 				to: 'all',

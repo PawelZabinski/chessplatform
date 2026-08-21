@@ -769,6 +769,24 @@ export class PlatformerGame {
 		setTimeout(() => this.callbacks.onBanner(null), 1500);
 	}
 
+	/** Applies the visible reward for a server-decided duel result. */
+	matchGameEnded(won: boolean, reason: string) {
+		if (this.ended || this.completing) return;
+
+		if (won) {
+			this.gamesWon += 1;
+			this.player.launch(-2000);
+			this.callbacks.onBanner({
+				kicker: 'VICTORY',
+				title: reason === 'king captured' ? 'King captured' : 'Checkmate',
+				accent: '#f6e2a0'
+			});
+			this.toast('Victory fling!', 'good');
+		} else {
+			this.toast(reason === 'stalemate' ? 'Drawn game' : 'A rival won the game', 'cool');
+		}
+	}
+
 	/** The server ended the match. Its word is final, whatever the local climb thinks. */
 	matchOver(reason: string, result: number) {
 		if (this.ended) return;

@@ -245,7 +245,84 @@ check('loser (e) takes the favoured black side', nextE.youPlay, 'b');
 check('winner (f) takes weakened white', nextF.youPlay, 'w');
 check('handicap fen differs from level', nextE.fen !== startE.firstGame.fen, true);
 
-// 13. Disconnect ends the match for the survivor.
+// 13. Real-time play may reach the unusual but legal-for-this-mode king capture.
+//     It must pay and redeal exactly like checkmate instead of leaving a kingless,
+//     disabled board behind.
+const kingA = client('KingCaptureA');
+const kingB = client('KingCaptureB');
+await kingA.open();
+await kingB.open();
+kingA.send({ t: 'join', displayName: 'King taker' });
+const kingLobby = await kingA.next((m) => m.t === 'lobby');
+kingB.send({ t: 'join', displayName: 'King keeper', lobbyCode: kingLobby.lobbyCode });
+await kingB.next((m) => m.t === 'lobby');
+kingA.send({
+	t: 'config',
+	config: {
+		moveCooldownMs: 0,
+		chessMode: 'shared',
+		opening: 'custom',
+		customFen: '8/8/2k2Q2/8/8/8/8/4K3 w - - 0 1'
+	}
+});
+await kingA.next((m) => m.t === 'lobby' && m.config.opening === 'custom');
+kingA.send({ t: 'ready', ready: true });
+kingB.send({ t: 'ready', ready: true });
+const kingStart = await kingA.next((m) => m.t === 'start');
+kingA.send({
+	t: 'move',
+	lan: 'f6c6',
+	gameIndex: 0,
+	expectedFen: kingStart.firstGame.fen
+});
+await kingA.next((m) => m.t === 'moveApplied' && m.lan === 'f6c6');
+const kingEnded = await kingA.next((m) => m.t === 'gameEnded');
+check('king capture detected', kingEnded.reason, 'king captured');
+check('king capturer wins', kingEnded.winner, 'a');
+check('king capture earns victory fling', kingEnded.fling > 0, true);
+check(
+	'king capture deals a fresh board',
+	(await kingA.next((m) => m.t === 'gameStart' && m.gameIndex === 1)).gameIndex,
+	1
+);
+kingA.ws.close();
+kingB.ws.close();
+
+// 14. End Run is unanimous: rejection keeps the match alive; acceptance ends
+//     it as an agreed draw with no winner.
+const voteA = client('VoteA');
+const voteB = client('VoteB');
+await voteA.open();
+await voteB.open();
+voteA.send({ t: 'join', displayName: 'Asker' });
+const voteLobby = await voteA.next((m) => m.t === 'lobby');
+voteB.send({ t: 'join', displayName: 'Decider', lobbyCode: voteLobby.lobbyCode });
+await voteB.next((m) => m.t === 'lobby');
+voteA.send({ t: 'ready', ready: true });
+voteB.send({ t: 'ready', ready: true });
+await voteA.next((m) => m.t === 'start');
+
+voteA.send({ t: 'requestEndRun' });
+const requested = await voteB.next((m) => m.t === 'endRunVote' && m.requestedBy === 'a');
+check('end-run requester recorded', requested.acceptedBy, ['a']);
+check('request alone does not end match', voteA.inbox.some((m) => m.t === 'matchEnded'), false);
+
+voteB.send({ t: 'respondEndRun', accept: false });
+const rejected = await voteA.next((m) => m.t === 'endRunVote' && m.requestedBy === null);
+check('rejection dismisses end-run request', rejected.acceptedBy, []);
+check('rejection keeps match alive', voteA.inbox.some((m) => m.t === 'matchEnded'), false);
+
+voteB.send({ t: 'requestEndRun' });
+await voteA.next((m) => m.t === 'endRunVote' && m.requestedBy === 'b');
+voteA.send({ t: 'respondEndRun', accept: true });
+const agreedA = await voteA.next((m) => m.t === 'matchEnded' && m.reason === 'agreed');
+const agreedB = await voteB.next((m) => m.t === 'matchEnded' && m.reason === 'agreed');
+check('unanimous end-run agreement ends match', agreedA.reason, 'agreed');
+check('agreed end run has no winner', agreedB.winner, null);
+voteA.ws.close();
+voteB.ws.close();
+
+// 15. Disconnect ends the match for the survivor.
 f.ws.close();
 const matchEnd = await e.next((m) => m.t === 'matchEnded', 4000);
 check('disconnect ends match', matchEnd.reason, 'disconnected');
@@ -255,7 +332,7 @@ a.ws.close();
 b.ws.close();
 e.ws.close();
 
-// 14. A room of five seats everyone, and a duel is refused at that size.
+// 16. A room of five seats everyone, and a duel is refused at that size.
 const room5 = [];
 const host5 = client('H0');
 await host5.open();

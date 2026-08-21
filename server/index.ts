@@ -191,6 +191,22 @@ function handle(socket: WebSocket, message: ClientMessage) {
 			dispatch(room, room.match.endMatch(other, 'resigned'));
 			return;
 		}
+
+		case 'requestEndRun': {
+			logLine('info', 'match.end_run_requested', { room: room.match.code, seat });
+			dispatch(room, room.match.requestEndRun(seat));
+			return;
+		}
+
+		case 'respondEndRun': {
+			logLine('info', 'match.end_run_response', {
+				room: room.match.code,
+				seat,
+				accept: message.accept
+			});
+			dispatch(room, room.match.respondEndRun(seat, message.accept));
+			return;
+		}
 	}
 }
 
