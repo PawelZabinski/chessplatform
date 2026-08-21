@@ -389,7 +389,7 @@ export class Match {
 
 		player.nextMoveAt = now + this.config.moveCooldownMs;
 
-		const { lift } = liftForMove({
+		const { lift, reasons } = liftForMove({
 			captured: applied.captured,
 			flags: applied.flags,
 			san: applied.san
@@ -404,6 +404,8 @@ export class Match {
 					lan,
 					fen: this.chess.fen(),
 					lift,
+					reasons,
+					enPassant: applied.flags.includes('e'),
 					by: seat
 				}
 			}

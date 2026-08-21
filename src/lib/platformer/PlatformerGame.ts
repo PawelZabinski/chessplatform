@@ -658,9 +658,19 @@ export class PlatformerGame {
 		if (move.color !== 'w') return;
 
 		const { lift, reasons } = liftForMove(move);
+		this.applyLift(move.from, move.to, lift, reasons);
+	}
+
+	/** Applies a shared-duel move only after the server confirms we made it. */
+	applyMatchMove(lan: string, lift: number, reasons: string[]) {
+		if (this.ended || this.completing) return;
+		this.applyLift(lan.slice(0, 2), lan.slice(2, 4), lift, reasons);
+	}
+
+	private applyLift(from: string, to: string, lift: number, reasons: string[]) {
 		if (this.player.vy > -lift) this.player.launch(-lift);
 
-		const dx = String(move.to).charCodeAt(0) - String(move.from).charCodeAt(0);
+		const dx = to.charCodeAt(0) - from.charCodeAt(0);
 		this.player.vx = dx * STEER_PER_FILE;
 
 		if (reasons.length) this.toast(reasons.join(' · '), 'gold');

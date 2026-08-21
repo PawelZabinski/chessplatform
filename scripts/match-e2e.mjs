@@ -147,6 +147,8 @@ const applied = await a.next((m) => m.t === 'moveApplied');
 check('move applied', applied.lan, 'e2e4');
 check('mover identified', applied.by, 'a');
 check('lift awarded (quiet move)', applied.lift, 450);
+check('lift reasons included', applied.reasons, []);
+check('en passant metadata included', applied.enPassant, false);
 check('opponent saw the move', (await b.next((m) => m.t === 'moveApplied')).lan, 'e2e4');
 
 a.send({ t: 'move', lan: 'g1f3', gameIndex: 0, expectedFen: applied.fen });

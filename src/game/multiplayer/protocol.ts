@@ -275,6 +275,10 @@ export interface MoveApplied {
 	fen: string;
 	/** Lift the mover earns, computed server-side from src/game/lift.ts rules. */
 	lift: number;
+	/** Labels explaining capture, check, promotion, or castling bonuses. */
+	reasons: string[];
+	/** The mover alone receives the en-passant spike-clearing reward. */
+	enPassant: boolean;
 	by: Seat;
 }
 

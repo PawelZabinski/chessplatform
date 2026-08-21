@@ -11,7 +11,7 @@
 		type RunOutcome,
 		type Toast
 	} from '$lib/platformer/PlatformerGame';
-	import type { BoardHandle } from '$lib/ChessBoard.svelte';
+	import type { BoardHandle, Move } from '$lib/ChessBoard.svelte';
 	import { chessState } from '$lib/stores/chess';
 	import { matchState, onMatchEvent } from '$lib/stores/match';
 	import { colourFor } from '$game/multiplayer/palette';
@@ -65,6 +65,20 @@
 		};
 	}
 
+	function isSharedDuel() {
+		return mode === 'match' && matchState.current.game?.shared === true;
+	}
+
+	function applyBoardMove(move: Move) {
+		// Both shared-duel boards observe both colours. The server event below uses
+		// mover identity to ensure only the player who made the move is launched.
+		if (!isSharedDuel()) game?.applyMove(move);
+	}
+
+	function applyBoardEnPassant() {
+		if (!isSharedDuel()) game?.enPassant();
+	}
+
 	/**
 	 * Connects the running climb to the match.
 	 *
@@ -112,8 +126,10 @@
 				case 'moveApplied': {
 					if (!shared) break;
 					if (message.by === seat) {
-						// Our own move: already on the board optimistically. Trust the
-						// server's position over ours and start the cooldown.
+						// Our own move: award its climb only after server confirmation,
+						// then trust the authoritative board and start the cooldown.
+						game?.applyMatchMove(message.lan, message.lift, message.reasons);
+						if (message.enPassant) game?.enPassant();
 						board?.resync(message.fen);
 						startCooldown();
 					} else {
@@ -252,8 +268,8 @@
 		<div class="board-frame">
 			<ChessBoard
 				bind:handle={board}
-				onMove={(move) => game?.applyMove(move)}
-				onEnPassant={() => game?.enPassant()}
+				onMove={applyBoardMove}
+				onEnPassant={applyBoardEnPassant}
 				onDrawRisk={(risk) => game?.drawRisk(risk.message)}
 				onInsufficientMaterial={() =>
 					game?.insufficientMaterial(
