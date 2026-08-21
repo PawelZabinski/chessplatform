@@ -82,6 +82,7 @@ a.send({ t: 'join', displayName: 'Alice' });
 const lobbyA = await a.next((m) => m.t === 'lobby');
 check('host seat', lobbyA.seat, 'a');
 check('host is host', lobbyA.hostSeat, 'a');
+check('multiplayer lava defaults off', lobbyA.config.lavaSpeed, 0);
 const code = lobbyA.lobbyCode;
 
 // 2. Non-host config is rejected.
@@ -113,14 +114,21 @@ check('unknown lobby refused', unknown.code, 'unknownLobby');
 d.ws.close();
 
 // 5. Host config is clamped, not trusted.
-a.send({ t: 'config', config: { targetHeight: 40, moveCooldownMs: -500, gameSpeed: 99 } });
+a.send({
+	t: 'config',
+	config: { targetHeight: 40, moveCooldownMs: -500, gameSpeed: 99, lavaSpeed: 18 }
+});
 const cfg = await a.next((m) => m.t === 'lobby' && m.config.targetHeight === 40);
 check('cooldown clamped >= 0', cfg.config.moveCooldownMs, 0);
 check('gameSpeed clamped <= 1', cfg.config.gameSpeed, 1);
+check('host can enable lava', cfg.config.lavaSpeed, 18);
 
 // Set a real cooldown for the timing test.
-a.send({ t: 'config', config: { moveCooldownMs: 400, chessMode: 'shared' } });
-await a.next((m) => m.t === 'lobby' && m.config.moveCooldownMs === 400);
+a.send({ t: 'config', config: { moveCooldownMs: 400, chessMode: 'shared', lavaSpeed: 0 } });
+const noLava = await a.next(
+	(m) => m.t === 'lobby' && m.config.moveCooldownMs === 400 && m.config.lavaSpeed === 0
+);
+check('host can disable lava', noLava.config.lavaSpeed, 0);
 
 // 6. Both ready -> match starts.
 a.send({ t: 'ready', ready: true });

@@ -207,7 +207,8 @@
 		await game.start({
 			mode,
 			floor,
-			seed: mode === 'match' ? matchState.current.worldSeed : undefined
+			seed: mode === 'match' ? matchState.current.worldSeed : undefined,
+			lavaSpeed: mode === 'match' ? matchState.current.config?.lavaSpeed : undefined
 		});
 		if (mode === 'match') stopMatch = connectMatch();
 	});

@@ -52,6 +52,8 @@ export interface StartOptions {
 	floor?: number;
 	/** Supplied by the match server; tower floors derive a stable seed locally. */
 	seed?: number;
+	/** Match lobby setting. Zero disables lava; single-player modes ignore it. */
+	lavaSpeed?: number;
 }
 
 /** Everything the UI needs to render the HUD, published every frame. */
@@ -253,7 +255,12 @@ export class PlatformerGame {
 		this.world.ensureGenerated(0);
 
 		this.player = new Player(width / 2 - 17, baseline - GROUND_INSET - PLAYER_HEIGHT - 4);
-		this.lava = new Lava(this.floor ? this.floor.lavaSpeed : 10, baseline, height);
+		const lavaSpeed = this.floor
+			? this.floor.lavaSpeed
+			: this.mode === 'match'
+				? Math.max(0, options.lavaSpeed ?? 0)
+				: 10;
+		this.lava = new Lava(lavaSpeed, baseline, height);
 		this.cameraY = this.player.y - height * CAMERA_ANCHOR;
 
 		if (this.floor) {
@@ -272,6 +279,7 @@ export class PlatformerGame {
 		log.info('run', `Run started: ${this.mode}`, {
 			floor: this.floor?.floor,
 			worldSeed,
+			lavaSpeed,
 			floorName: this.floor?.name,
 			view: `${Math.round(width)}x${Math.round(height)}`
 		});

@@ -348,7 +348,7 @@ export const DEFAULT_MATCH_CONFIG: MatchConfig = {
 	winStreakForInstantWin: 2,
 	moveCooldownMs: 1000,
 	gameSpeed: 1,
-	lavaSpeed: 12,
+	lavaSpeed: 0,
 	chessMode: 'solo',
 	maxPlayers: 2,
 	opening: 'standard',

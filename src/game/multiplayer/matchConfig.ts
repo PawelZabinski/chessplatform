@@ -40,6 +40,7 @@ export const GAME_SPEED_OPTIONS: ConfigOption<number>[] = [
 ];
 
 export const LAVA_OPTIONS: ConfigOption<number>[] = [
+	{ value: 0, label: 'Off', blurb: 'No lava. The race is purely about climbing.' },
 	{ value: 8, label: 'Gentle', blurb: 'The lava is a distant worry.' },
 	{ value: 12, label: 'Standard', blurb: 'Keep climbing and you are fine.' },
 	{ value: 18, label: 'Fierce', blurb: 'Stall and you burn.' }
@@ -92,10 +93,11 @@ export function optionFor<T>(options: ConfigOption<T>[], value: T): ConfigOption
 
 /** One-line summary of a config, for the waiting-room card. */
 export function summarise(config: MatchConfig): string {
+	const lava = optionFor(LAVA_OPTIONS, config.lavaSpeed);
 	return [
 		`${config.moveCooldownMs / 1000}s cooldown`,
 		`${config.targetHeight} bands`,
 		optionFor(GAME_SPEED_OPTIONS, config.gameSpeed).label.toLowerCase(),
-		`${optionFor(LAVA_OPTIONS, config.lavaSpeed).label.toLowerCase()} lava`
+		lava.value === 0 ? 'no lava' : `${lava.label.toLowerCase()} lava`
 	].join('  ·  ');
 }
