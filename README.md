@@ -2,7 +2,53 @@
 
 ChessPlatform turns a game of chess into a race up a collapsing tower. Every move on the board affects the climber beside it: captures launch you higher, files steer you across the tower, and taking too long lets the lava catch up.
 
-The project began as a submission for a Cambridge hackathon in 2025. The original experiment joined a chess engine to a platform game; it has since grown into a complete browser game with a campaign, an endless mode, local progression, and real-time multiplayer.
+The project began as a submission for CamHack 25 (Cambridge Hackathon). The original experiment joined a chess engine to a platform game; it has since grown into a complete browser game with a campaign, an endless mode, local progression, and real-time multiplayer.
+
+## Screenshots
+
+<p align="center">
+  <img src="docs/screenshots/tower-gameplay.png" alt="ChessPlatform tower gameplay with a live chess position beside the platformer" width="100%">
+</p>
+
+<p align="center"><em>Chess moves steer the climber through a collapsing tower.</em></p>
+
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <img src="docs/screenshots/slow-motion-gameplay.png" alt="A high-scoring tower run using slow motion" width="100%"><br>
+      <sub><b>Build combos and spend slow motion</b></sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="docs/screenshots/tower-endgame.png" alt="A tower endgame with the climber, platforms, hazards, and chess board" width="100%"><br>
+      <sub><b>Survive hand-crafted chess endgames</b></sub>
+    </td>
+  </tr>
+</table>
+
+<p align="center">
+  <img src="docs/screenshots/tower-floor-select.png" alt="The Tower campaign floor selection screen" width="100%">
+</p>
+
+<p align="center"><em>Climb a campaign of increasingly difficult floors and earn up to three stars on each.</em></p>
+
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <img src="docs/screenshots/race-lobby-mobile.png" alt="A multiplayer Race lobby with a room code and two players" width="70%"><br>
+      <sub><b>Create a room and invite rivals</b></sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="docs/screenshots/race-gameplay-mobile.png" alt="Two-player Race gameplay on a shared chess board" width="70%"><br>
+      <sub><b>Race together on the same generated tower</b></sub>
+    </td>
+  </tr>
+</table>
+
+<p align="center">
+  <img src="docs/screenshots/hall-of-champions.png" alt="The Hall of Champions local leaderboard" width="100%">
+</p>
+
+<p align="center"><em>Record solo runs in the local Hall of Champions.</em></p>
 
 ## How it plays
 
