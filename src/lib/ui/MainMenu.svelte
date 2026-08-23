@@ -49,12 +49,13 @@
 			<li><b>Climbing charges slow-motion</b> — press <b>Q</b> to slow the whole tower.</li>
 			<li><b>Stalling burns you.</b> The lava never stops rising.</li>
 		</ul>
-		<p class="lede">On a phone or tablet</p>
+		<p class="lede">Gesture layer (desktop, phone, or tablet)</p>
 		<ul class="help">
 			<li><b>Drag</b> anywhere on the climb to steer left and right.</li>
 			<li><b>Tap</b> to brake — or to jump, while a rune is lit.</li>
 			<li><b>Swipe down</b> to drop through a plank.</li>
 			<li><b>◑</b> spends charged slow motion.</li>
+			<li><b>Touch on/off</b> disables or restores the gesture layer.</li>
 		</ul>
 	</Modal>
 {/if}

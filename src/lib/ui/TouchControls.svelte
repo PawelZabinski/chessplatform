@@ -7,27 +7,32 @@
 
 	export let input: Input | null = null;
 	export let hud: HudState | null = null;
+	export let touchDevice = false;
 
 	let surface: HTMLDivElement;
 	let gestures: Gestures | null = null;
 	let showHints = false;
+	let enabled = true;
+	let touchHintsChecked = false;
 
 	const HINT_KEY = 'chessplatform:touch-hints-seen';
+	const ENABLED_KEY = 'chessplatform:touch-layer-enabled';
 
-	$: gestures?.setInput(input);
+	$: gestures?.setInput(enabled ? input : null);
 	$: charge = hud?.slowCharge ?? 0;
 	$: slowReady = hud?.slowActive || charge >= SLOWMO_MIN_CHARGE;
 	$: controlLit = (hud?.controlRemaining ?? 0) > 0;
 	$: onGround = hud?.onGround ?? true;
+	$: if (touchDevice && !touchHintsChecked) checkTouchHints();
 
 	onMount(() => {
-		gestures = new Gestures(surface, input);
-
 		try {
-			showHints = localStorage.getItem(HINT_KEY) === null;
+			enabled = localStorage.getItem(ENABLED_KEY) !== '0';
 		} catch {
-			showHints = true; // private browsing: show them, they are cheap to dismiss
+			enabled = true;
 		}
+
+		gestures = new Gestures(surface, enabled ? input : null);
 	});
 
 	onDestroy(() => gestures?.destroy());
@@ -41,8 +46,26 @@
 		}
 	}
 
+	function checkTouchHints() {
+		touchHintsChecked = true;
+		try {
+			showHints = localStorage.getItem(HINT_KEY) === null;
+		} catch {
+			showHints = true; // private browsing: show them, they are cheap to dismiss
+		}
+	}
+
 	function tapSlow() {
 		input?.pressTouch('slow');
+	}
+
+	function toggleLayer() {
+		enabled = !enabled;
+		try {
+			localStorage.setItem(ENABLED_KEY, enabled ? '1' : '0');
+		} catch {
+			/* The toggle still works for this run when storage is unavailable. */
+		}
 	}
 </script>
 
@@ -54,8 +77,11 @@
 <div
 	class="surface"
 	bind:this={surface}
+	class:disabled={!enabled}
 	role="application"
-	aria-label="Climb controls: drag to steer, tap to jump, swipe down to drop"
+	aria-label={enabled
+		? 'Climb controls: drag to steer, tap to jump, swipe down to drop'
+		: 'Climb gesture controls disabled'}
 ></div>
 
 <!--
@@ -67,7 +93,7 @@
 	also the clearest possible signal that it has.
 -->
 <div class="rail">
-	{#if slowReady}
+	{#if touchDevice && enabled && slowReady}
 		<button
 			class="orb slow"
 			class:active={hud?.slowActive}
@@ -88,6 +114,17 @@
 			?
 		</button>
 	{/if}
+
+	<button
+		class="layer-toggle"
+		class:off={!enabled}
+		type="button"
+		on:click={toggleLayer}
+		aria-pressed={enabled}
+		aria-label={enabled ? 'Disable gesture controls' : 'Enable gesture controls'}
+	>
+		<span aria-hidden="true">{enabled ? 'Touch on' : 'Touch off'}</span>
+	</button>
 </div>
 
 {#if controlLit && onGround}
@@ -109,6 +146,7 @@
 				<dd>Spend charged slow motion. It fills as you climb.</dd>
 			</dl>
 			<p class="note">Steering and jumping need a control rune. Your chess moves do the rest.</p>
+			<p class="note">Use the subtle Touch on/off button to disable or restore this gesture layer.</p>
 			<button class="got-it" type="button" on:click={dismissHints}>Climb</button>
 		</div>
 	</div>
@@ -122,6 +160,10 @@
 		touch-action: none;
 		-webkit-tap-highlight-color: transparent;
 		/* No background: it is a hit target, not a thing you should be able to see. */
+	}
+
+	.surface.disabled {
+		pointer-events: none;
 	}
 
 	.rail {
@@ -168,6 +210,30 @@
 	.orb.slow.active {
 		border-color: #dcefff;
 		box-shadow: 0 0 0 3px rgba(158, 203, 240, 0.35);
+	}
+
+	.layer-toggle {
+		padding: 5px 8px;
+		border: 1px solid rgba(201, 162, 39, 0.45);
+		border-radius: 999px;
+		background: rgba(20, 13, 6, 0.48);
+		color: rgba(232, 216, 176, 0.72);
+		font-family: var(--font-body);
+		font-size: 9px;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		touch-action: manipulation;
+		-webkit-tap-highlight-color: transparent;
+		cursor: pointer;
+		opacity: 0.58;
+		transition: opacity 0.15s ease, border-color 0.15s ease;
+	}
+
+	.layer-toggle:hover,
+	.layer-toggle:focus-visible,
+	.layer-toggle.off {
+		opacity: 1;
+		border-color: var(--gold);
 	}
 
 	.glyph {

@@ -202,6 +202,26 @@ export const lastPlayerName = {
 	}
 };
 
+/**
+ * One champion per name, keeping the entry from that player's best run.
+ *
+ * Names are compared after trimming and lower-casing, so "Pawel", "pawel",
+ * and an older entry with stray surrounding spaces all share one slot. The
+ * winning entry keeps the spelling and run details it was originally saved
+ * with. Equal scores keep the earlier entry.
+ */
+function bestScorePerName(rows: LeaderboardEntry[]): LeaderboardEntry[] {
+	const bestByName = new Map<string, LeaderboardEntry>();
+
+	for (const row of rows) {
+		const key = row.name.trim().toLowerCase();
+		const existing = bestByName.get(key);
+		if (!existing || row.score > existing.score) bestByName.set(key, row);
+	}
+
+	return [...bestByName.values()];
+}
+
 function createLeaderboardStore() {
 	const { subscribe, set, update } = writable<LeaderboardEntry[]>([]);
 	let hasHydrated = false;
@@ -257,8 +277,12 @@ function createLeaderboardStore() {
 		if (hasHydrated) {
 			return;
 		}
-		const hydrated = loadFromStorage();
+		const stored = loadFromStorage();
+		const hydrated = bestScorePerName(stored);
 		set(hydrated);
+		// Migrate older leaderboards in place so duplicate names do not return on
+		// the next page load.
+		if (hydrated.length !== stored.length) persist(hydrated);
 		hasHydrated = true;
 	};
 
@@ -276,7 +300,7 @@ function createLeaderboardStore() {
 		},
 		add(row: LeaderboardEntry) {
 			update((currentRows) => {
-				const updated = [...currentRows, row];
+				const updated = bestScorePerName([...currentRows, row]);
 				persist(updated);
 				return updated;
 			});

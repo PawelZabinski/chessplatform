@@ -54,6 +54,9 @@ export class Gestures {
 	}
 
 	setInput(input: Input | null) {
+		// Disabling the layer mid-drag must release the virtual stick before the
+		// input handle is detached, or the last direction stays held forever.
+		if (!input && this.input) this.reset();
 		this.input = input;
 	}
 

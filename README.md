@@ -78,7 +78,7 @@ Most movement comes from chess, but a few direct controls help you survive the t
 | `A` / `D` or `←` / `→` | Move while a control rune is active |
 | `W`, `↑`, or `Space` | Jump while a control rune is active |
 
-Touch devices use drag, tap, swipe, and an on-screen slow-motion control.
+The gesture layer is enabled on desktop and touch devices: drag, tap, or swipe on the climb to control it. A subtle **Touch on/off** button disables or restores the layer; touch devices also show an on-screen slow-motion control.
 
 ## Run locally
 

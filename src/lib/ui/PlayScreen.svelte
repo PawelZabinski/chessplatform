@@ -291,9 +291,7 @@
 	<section class="climb" aria-label="The climb">
 		<div class="stage" bind:this={stage}></div>
 		<!-- Before the HUD, so the HUD's own buttons win the hit test. -->
-		{#if touch}
-			<TouchControls input={game?.inputHandle ?? null} {hud} />
-		{/if}
+		<TouchControls input={game?.inputHandle ?? null} {hud} touchDevice={touch} />
 		<Hud
 			{hud}
 			{toasts}
