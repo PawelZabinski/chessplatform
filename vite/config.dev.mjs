@@ -10,6 +10,9 @@ const chessgroundAssets = fileURLToPath(new URL('../node_modules/chessground/ass
 
 // https://vitejs.dev/config/
 export default defineConfig({
+	// MatchClient reads PUBLIC_MATCH_SERVER at build time. Vite only exposes
+	// VITE_* by default, while SvelteKit's public convention is PUBLIC_*.
+	envPrefix: ['VITE_', 'PUBLIC_'],
 	resolve: {
 		alias: { 'chessground-assets': chessgroundAssets }
 	},

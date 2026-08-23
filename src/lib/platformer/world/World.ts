@@ -36,7 +36,7 @@ export class World {
 	private sealed = false;
 
 	constructor(
-		private width: number,
+		private readonly width: number,
 		private readonly baseline: number,
 		private readonly rules: FieldRules,
 		private readonly themeForLevel: (level: number) => TerrainTheme,
@@ -65,23 +65,6 @@ export class World {
 
 	get highestGenerated() {
 		return this.highestBand;
-	}
-
-	/** Re-spaces content when the viewport width changes. */
-	resize(width: number) {
-		const scale = width / this.width;
-		this.width = width;
-
-		for (const p of this.platforms) {
-			if (p === this.groundPlatform) continue;
-			p.x *= scale;
-		}
-		for (const s of this.spikes) s.x *= scale;
-		for (const r of this.runes) r.x *= scale;
-
-		// The floor always spans the view, however wide it becomes.
-		this.groundPlatform.x = -width;
-		this.groundPlatform.width = width * 3;
 	}
 
 	/** Generates every band up to `level + lookahead`. */
@@ -123,7 +106,7 @@ export class World {
 
 		for (let i = 0; i < count; i++) {
 			// Slot retries must not alter hazard rolls. Keeping independent streams
-			// preserves the same platform types on different viewport widths.
+			// also makes a seed reproduce the whole course on every device.
 			const slotRandom = seededRandom(this.seed, stream + i * 2 + 1);
 			const featureRandom = seededRandom(this.seed, stream + i * 2 + 2);
 			const centre = this.findSlot(half, this.width - half, spacing, placed, slotRandom);

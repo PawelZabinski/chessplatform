@@ -212,14 +212,27 @@ export class MatchClient {
  */
 function serverUrl(): string | undefined {
 	const configured = import.meta.env.PUBLIC_MATCH_SERVER as string | undefined;
+	if (configured === 'disabled') return undefined;
+	if (configured === 'same-origin') return sameOriginServerUrl();
 	if (configured) return configured;
 
 	// In development the server runs alongside Vite on its default port; assuming
 	// that saves configuring anything to try the mode locally.
 	if (import.meta.env.DEV && typeof window !== 'undefined') {
-		return `ws://${window.location.hostname}:8787`;
+		return `ws://${window.location.hostname}:8787/ws/matches`;
 	}
-	return undefined;
+
+	// A production deployment normally serves the static client in front of this
+	// repository's backend. Defaulting to the same origin makes that standard
+	// setup work without requiring a magic build flag. Pure-static deployments
+	// can opt out explicitly with PUBLIC_MATCH_SERVER=disabled.
+	return sameOriginServerUrl();
+}
+
+function sameOriginServerUrl(): string | undefined {
+	if (typeof window === 'undefined') return undefined;
+	const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+	return `${protocol}//${window.location.host}/ws/matches`;
 }
 
 export const matchClient = new MatchClient(serverUrl());

@@ -299,9 +299,8 @@ export class PlatformerGame {
 		return themeForStage(stageForLevel(level).index);
 	}
 
-	private onResize(width: number, height: number) {
+	private onResize(_width: number, height: number) {
 		if (!this.world) return;
-		this.world.resize(width);
 		this.lava.setViewHeight(height);
 	}
 
@@ -574,9 +573,10 @@ export class PlatformerGame {
 	/**
 	 * Sets, or updates, where a rival is.
 	 *
-	 * Network coordinates are normalized against the sender's viewport, then
-	 * projected into ours. This keeps a phone and desktop in the same relative
-	 * place without pretending their canvases have identical pixel widths.
+	 * Network coordinates remain normalized at the protocol boundary. Every
+	 * client now has the same logical world width, so projecting them reproduces
+	 * the exact same horizontal position while staying backward-compatible with
+	 * older clients.
 	 */
 	setRival(seat: string, name: string, css: string, pose: ClimberPose) {
 		const safeX = Number.isFinite(pose.x) ? Math.max(0, Math.min(1, pose.x)) : 0.5;

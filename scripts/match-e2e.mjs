@@ -8,7 +8,7 @@ const guard = setTimeout(() => {
 }, 30000);
 guard.unref?.();
 
-const URL = 'ws://localhost:8787';
+const URL = process.env.MATCH_SERVER_URL ?? 'ws://localhost:8787/ws/matches';
 const log = [];
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 

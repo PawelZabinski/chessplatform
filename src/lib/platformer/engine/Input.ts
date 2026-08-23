@@ -110,10 +110,19 @@ export class Input {
 	}
 }
 
-/** Whether this device is primarily touch-driven, for showing on-screen controls. */
+/**
+ * Whether the climb should expose its touch layer.
+ *
+ * Requiring both touch points and a coarse *primary* pointer hid controls on
+ * hybrid devices, iPad desktop mode, and some embedded mobile browsers. Any one
+ * reliable touch/mobile signal is enough; a narrow desktop also benefits from
+ * mouse-driven gestures and loses nothing because the climb has no click UI.
+ */
 export function isTouchDevice(): boolean {
 	if (typeof window === 'undefined') return false;
 	return (
-		(navigator.maxTouchPoints ?? 0) > 0 && window.matchMedia('(pointer: coarse)').matches
+		(navigator.maxTouchPoints ?? 0) > 0 ||
+		window.matchMedia('(pointer: coarse)').matches ||
+		window.matchMedia('(max-width: 820px)').matches
 	);
 }

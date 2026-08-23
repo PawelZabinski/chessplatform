@@ -118,6 +118,7 @@
 	.surface {
 		position: absolute;
 		inset: 0;
+		z-index: 1;
 		touch-action: none;
 		-webkit-tap-highlight-color: transparent;
 		/* No background: it is a hit target, not a thing you should be able to see. */
@@ -125,6 +126,7 @@
 
 	.rail {
 		position: absolute;
+		z-index: 3;
 		right: 10px;
 		bottom: calc(10px + env(safe-area-inset-bottom));
 		display: flex;

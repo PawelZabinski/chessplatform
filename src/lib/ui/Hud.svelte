@@ -155,6 +155,7 @@
 	.hud {
 		position: absolute;
 		inset: 0;
+		z-index: 2;
 		pointer-events: none;
 		font-family: var(--font-body);
 		display: flex;

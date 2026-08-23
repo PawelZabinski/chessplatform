@@ -65,6 +65,7 @@ export class Gestures {
 	private onDown = (event: PointerEvent) => {
 		// One finger drives the climb; the rest belong to the ability buttons.
 		if (this.pointerId !== null) return;
+		event.preventDefault();
 
 		this.pointerId = event.pointerId;
 		this.anchorX = this.startX = event.clientX;
@@ -89,6 +90,7 @@ export class Gestures {
 
 	private onMove = (event: PointerEvent) => {
 		if (event.pointerId !== this.pointerId) return;
+		event.preventDefault();
 
 		const dy = event.clientY - this.startY;
 		const fromStart = Math.hypot(event.clientX - this.startX, dy);
@@ -113,6 +115,7 @@ export class Gestures {
 
 	private onUp = (event: PointerEvent) => {
 		if (event.pointerId !== this.pointerId) return;
+		event.preventDefault();
 
 		const quick = performance.now() - this.startedAt <= TAP_MS;
 		if (!this.swiped && quick && this.travelled <= TAP_SLOP) {
@@ -126,6 +129,7 @@ export class Gestures {
 
 	private onCancel = (event: PointerEvent) => {
 		if (event.pointerId !== this.pointerId) return;
+		event.preventDefault();
 		this.reset();
 	};
 

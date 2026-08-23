@@ -79,6 +79,18 @@
 	<div class="mv-panel scroll">
 		<h2>{headline}</h2>
 		<p class="reason">{outcome.reason}</p>
+		{#if outcome.mode === 'tower'}
+			<div class="stars" aria-label={`${stars} of 3 stars earned`}>
+				{#each [0, 1, 2] as i}
+					<span class:on={stars > i} aria-hidden="true">★</span>
+				{/each}
+			</div>
+			<p class="stars-note">
+				{stars === 3 ? 'All three stars earned' : `${stars} of 3 stars earned`}{outcome.bySummit
+					? ' · Summit reached'
+					: ''}
+			</p>
+		{/if}
 		<hr />
 		<div class="score">{outcome.score.toLocaleString()}</div>
 		<div class="score-label">Climb score</div>
@@ -188,7 +200,7 @@
 		gap: 8px;
 		font-size: clamp(26px, 5vw, 38px);
 		line-height: 1;
-		margin-bottom: 10px;
+		margin: 14px 0 8px;
 	}
 
 	.stars span {

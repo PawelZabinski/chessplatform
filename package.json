@@ -26,9 +26,17 @@
         "build-nolog": "vite build --config vite/config.prod.mjs",
         "preview": "vite preview --outDir build",
         "validate:levels": "node scripts/validate-levels.mjs",
-        "server": "node --watch server/index.ts",
-        "server:prod": "node server/index.ts",
-        "dev:all": "node scripts/dev-all.mjs"
+        "backend": "node --watch server/index.ts",
+        "backend:prod": "node server/index.ts",
+        "server": "npm run backend",
+        "server:prod": "npm run backend:prod",
+        "dev:all": "node scripts/dev-all.mjs",
+        "check": "npm run check:app && npm run check:backend",
+        "check:app": "svelte-check --tsconfig ./tsconfig.json",
+        "check:backend": "tsc --project tsconfig.server.json",
+        "test:match:e2e": "node scripts/match-e2e.mjs",
+        "compose:up": "docker compose up --build",
+        "compose:down": "docker compose down"
     },
     "devDependencies": {
         "@sveltejs/adapter-auto": "2.1.0",
